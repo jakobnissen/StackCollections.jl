@@ -14,7 +14,7 @@ struct StackSet{M} <: AbstractSet{Int}
 end
 
 function StackSet{M}(v::UInt) where M
-    v ≥ Sys.WORD_SIZE ? throw_StackSet_digit_err(Val(M)) : StackSet{M}(v, unsafe)
+    v > mask(M) ? throw_StackSet_digit_err(Val(M)) : StackSet{M}(v, unsafe)
 end
 
 StackSet{M}() where M = StackSet{M}(zero(UInt), unsafe)
@@ -47,6 +47,7 @@ Base.copy(s::StackSet) = s
 Base.empty(x::StackSet) = typeof(x)()
 Base.isempty(x::StackSet) = iszero(x.x)
 Base.:(==)(x::StackSet, y::StackSet) = x.x == y.x
+Base.:⊊(x::StackSet, y::StackSet) = issubset(x, y) & (x != y)
 Base.allunique(x::StackSet) = true
 
 # Julia PR33300 - improved printing of AbstractSets make this obsolete
@@ -63,6 +64,7 @@ function Base.iterate(x::StackSet, state::Int=0)
     return (state + tz, state + tz + 1)
 end
 
+Base.in(x::Int, s::StackSet) = isodd(s.x >>> unsigned(x))
 Base.length(x::StackSet) = count_ones(x.x)
 Base.minimum(x::StackSet) = first(x)
 Base.maximum(x::StackSet) = last(x)
@@ -72,7 +74,6 @@ function Base.last(x::StackSet)
     Sys.WORD_SIZE - 1 - leading_zeros(x.x)
 end
 
-Base.in(x::Int, s::StackSet{M}) where M = (x < M) & isodd(s.x >>> unsigned(x))
 function push(s::StackSet, v::Int, ::Unsafe)
     typeof(s)(s.x | (1 << (unsigned(v) & (Sys.WORD_SIZE - 1))), unsafe)
 end
@@ -81,14 +82,23 @@ function push(s::StackSet{M}, v::Int) where M
     unsigned(v) ≥ M ? throw_StackSet_digit_err(Val(M)) : push(s, v, unsafe)
 end
 
-pop(s::StackSet, v::Int) = in(s, v) ? delete(s, v) : throw(KeyError(v))
-function delete(s::StackSet, v::Int)
-    mask = ~(one(UInt) << unsigned(v))
+function Base.filter(pred, x::StackSet)
+    r = typeof(x)()
+    for i in x
+        pred(i) && (r = push(r, i, unsafe))
+    end
+    r
+end
+
+pop(s::StackSet, v::Int) = in(s, v) ? delete(s, v, unsafe) : throw(KeyError(v))
+delete(s::StackSet, v::Int) = ifelse(v ≥ Sys.WORD_SIZE, s, delete(s, v, unsafe))
+function delete(s::StackSet, v::Int, ::Unsafe)
+    mask = (typemax(UInt) - 1) << (unsigned(v) & (Sys.WORD_SIZE - 1))
     typeof(s)(s.x & mask, unsafe)
 end
 
-Base.issubset(x::StackSet, y::StackSet) = isempty(setdiff(x, y))
 complement(x::StackSet{M}) where M = typeof(x)(x.x ⊻ mask(M), unsafe)
+Base.issubset(x::StackSet, y::StackSet) = isempty(setdiff(x, y))
 isdisjoint(x::StackSet, y::StackSet) = isempty(intersect(x, y))
 for (func, op) in ((:union, :|), (:intersect, :&), (:symdiff, :⊻))
     @eval begin
