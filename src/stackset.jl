@@ -1,10 +1,24 @@
 struct StackSet <: AbstractStackSet
-    x::UInt
+    set::DigitSet
+    offset::Int # lowest value in set, 0 if set is empty
 
-    StackSet(x::UInt) = new(x)
+    StackSet(set::DigitSet, offset::Int, ::Unsafe) = new(set, offset)
 end
 
-StackSet() = StackSet(zero(UInt))
+StackSet(set::DigitSet, offset::Int) = normalized(StackSet(set, offset, unsafe))
+
+function Base.hash(x::StackSet, h::UInt)
+    base = 0x30a9fa66b925af5a % UInt
+    h = hash(base, h)
+    h = hash(x.set, h)
+    return hash(x.offset, h)
+end
+
+StackSet() = StackSet(DigitSet(), 0, unsafe)
+Base.empty(x::StackSet) = StackSet()
+Base.isempty(x::StackSet) = isempty(x.set)
+Base.length(x::StackSet) = length(x.set)
+
 function StackSet(itr)
     d = StackSet()
     for i in itr
@@ -13,87 +27,93 @@ function StackSet(itr)
     d
 end
 
-@noinline function throw_StackSet_digit_err()
-    throw(ArgumentError("StackSet can only contain 0:$(Sys.WORD_SIZE-1)"))
+@noinline function throw_StackSet_range_err()
+    throw(ArgumentError("DigitSet can not contain values differing " *
+                        "by more than $(Sys.WORD_SIZE-1)"))
 end
 
-Base.empty(x::StackSet) = StackSet()
-Base.isempty(x::StackSet) = iszero(x.x)
-Base.:(==)(x::StackSet, y::StackSet) = x.x == y.x
-Base.:⊊(x::StackSet, y::StackSet) = issubset(x, y) & (x != y)
-Base.allunique(x::StackSet) = true
+function Base.iterate(s::StackSet, i::Int=0)
+    it = iterate(s.set, i)
+    it === nothing && return nothing
+    return it[1]+s.offset, it[2]
+end
 
-# Julia PR33300 - improved printing of AbstractSets make this obsolete
-@static if VERSION < v"1.4"
-    function Base.show(io::IO, s::AbstractStackSet)
-        print(io, "$(typeof(s).name)([", join(s, ','), "])")
+function new_offset(s::StackSet, x::Int)
+    # Returns new offset for stackset when pushing x in, and the shift.
+    # if s is empty, shift result is arbitrary.
+    newoffset = min(s.offset, x)
+    return ifelse(isempty(s), x, newoffset), (s.offset - newoffset)
+end
+
+function push(s::StackSet, x::Int, ::Unsafe)
+    newoffset, lshift = new_offset(s, x)
+    newset = push(DigitSet(s.set.x << (lshift & 63)), x-newoffset, unsafe)
+    return StackSet(newset, newoffset, unsafe)
+end
+
+function push(s::StackSet, x::Int)
+    newoffset, lshift = new_offset(s, x)
+    leading_zeros(s.set.x) < lshift && throw_StackSet_range_err()
+    newset = push(DigitSet(s.set.x << (lshift & 63)), x-newoffset)
+    return StackSet(newset, newoffset, unsafe)
+end
+
+Base.maximum(x::StackSet) = maximum(x.set) + x.offset
+Base.minimum(x::StackSet) = minimum(x.set) + x.offset
+Base.in(x::Int, s::StackSet) = in(x-s.offset, s.set)
+
+function Base.filter(pred, s::StackSet)
+    r = DigitSet()
+    for i in s.set
+        pred(i+s.offset) && (r = push(r, i, unsafe))
     end
+    normalized(StackSet(r, s.offset, unsafe))
 end
 
-function Base.iterate(x::StackSet, state::Int=0)
-    bits = x.x >>> unsigned(state)
-    iszero(bits) && return nothing
-    tz  = trailing_zeros(bits)
-    return (state + tz, state + tz + 1)
+delete(s::StackSet, v::Int, ::Unsafe) = normalized(delete(s.set, v-s.offset, unsafe), s.offset)
+delete(s::StackSet, v::Int) = normalized(delete(s.set, v-s.offset), s.offset)
+
+function Base.intersect(x::StackSet, y::StackSet)
+    new_x_set = trunc_offset_stackset(x, y)
+    normalized(StackSet(intersect(new_x_set, y.set), y.offset, unsafe))
 end
 
-Base.in(x::Int, s::StackSet) = isodd(s.x >>> unsigned(x))
-Base.length(x::StackSet) = count_ones(x.x)
-Base.minimum(x::AbstractStackSet) = first(x)
-
-function Base.maximum(x::StackSet)
-    isempty(x) && throw(ArgumentError("collection must be non-empty"))
-    Sys.WORD_SIZE - 1 - leading_zeros(x.x)
+function Base.setdiff(x::StackSet, y::StackSet)
+    new_y_set = trunc_offset_stackset(y, x)
+    normalized(StackSet(setdiff(x.set, new_y_set), x.offset, unsafe))
 end
 
-function push(s::StackSet, v::Int, ::Unsafe)
-    StackSet(s.x | (1 << (unsigned(v) & (Sys.WORD_SIZE - 1))))
+# This shifts the from bits to match the to bits, truncating if necessary
+function trunc_offset_stackset(from::StackSet, to::StackSet)
+    return DigitSet(from.set.x >>> (to.offset - from.offset))
 end
 
-function push(s::StackSet, v::Int)
-    unsigned(v) ≥ Sys.WORD_SIZE ? throw_StackSet_digit_err() : push(s, v, unsafe)
+function normalized(s::StackSet)
+    rshift = trailing_zeros(s.set.x)
+    offset = ifelse(isempty(s), 0, s.offset + rshift)
+    return StackSet(DigitSet(s.set.x >>> (rshift & 63)), offset, unsafe)
 end
 
-function Base.filter(pred, x::StackSet)
-    r = StackSet()
-    for i in x
-        pred(i) && (r = push(r, i, unsafe))
+# Return sets with lower offset, or non-empty's offset
+function offset_to_lower(smaller::StackSet, bigger::StackSet)
+    if (isempty(smaller) | isempty(bigger))
+        return smaller.set, bigger.set
     end
-    r
+    lshift = unsigned(bigger.offset - smaller.offset)
+    leading_zeros(bigger.set.x) < lshift && throw_StackSet_range_err()
+    shifted = bigger.set.x << (lshift & 63)
+    return smaller.set, DigitSet(shifted)
 end
 
-pop(s::StackSet, v::Int) = in(s, v) ? delete(s, v, unsafe) : throw(KeyError(v))
-delete(s::StackSet, v::Int) = ifelse(v ≥ Sys.WORD_SIZE, s, delete(s, v, unsafe))
-function delete(s::StackSet, v::Int, ::Unsafe)
-    mask = (typemax(UInt) - 1) << (unsigned(v) & (Sys.WORD_SIZE - 1))
-    StackSet(s.x & mask)
+function Base.union(x::StackSet, y::StackSet)
+    (smaller, bigger) = ifelse(x.offset < y.offset, (x, y), (y, x))
+    sm_set, bg_set = offset_to_lower(smaller, bigger)
+    return StackSet(union(sm_set, bg_set), smaller.offset, unsafe)
 end
 
-Base.issubset(x::StackSet, y::StackSet) = isempty(setdiff(x, y))
-isdisjoint(x::StackSet, y::StackSet) = isempty(intersect(x, y))
-for (func, op) in ((:union, :|), (:intersect, :&), (:symdiff, :⊻))
-    @eval begin
-        function Base.$(func)(x::StackSet, y::StackSet)
-            StackSet($op(x.x, y.x))
-        end
-
-        Base.$(func)(x, y::StackSet) = $func(y, x)
-        function Base.$(func)(x::StackSet, itr...)
-            for i in itr
-                y_ = StackSet(i)
-                x = $func(x, y_)
-            end
-            x
-        end
-    end
-end
-
-Base.setdiff(x::StackSet, y::StackSet) = StackSet(x.x & ~y.x)
-function Base.setdiff(x::StackSet, itr...)
-    union_ = StackSet
-    for i in itr
-        y_ = StackSet(i)
-        union_ = union(union_, y_)
-    end
-    return setdiff(x, union_)
+function Base.symdiff(x::StackSet, y::StackSet)
+    (smaller, bigger) = ifelse(x.offset < y.offset, (x, y), (y, x))
+    sm_set, bg_set = offset_to_lower(smaller, bigger)
+    ss = StackSet(symdiff(sm_set, bg_set), smaller.offset, unsafe)
+    return normalized(ss)
 end

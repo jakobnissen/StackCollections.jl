@@ -11,49 +11,63 @@ end
 mask(L) = UInt(1) << L - 1
 Base.size(s::StackVector) = (length(s),)
 Base.length(s::StackVector{L}) where L = L
+Base.:(==)(x::StackVector, y::StackVector) = x === y
+
+function Base.hash(x::StackVector{L}, h::UInt) where L
+    base = (0x93774c8a392b33bb % UInt) * L
+    h = hash(base, h)
+    return hash(x.x, h)
+end
 
 StackVector{L}() where L = StackVector{L}(UInt(0), unsafe)
-StackVector() = StackVector{Sys.WORD_SIZE}()
+StackVector(x...) = StackVector{Sys.WORD_SIZE}(x...)
+
+function StackVector{L}(itr) where L
+    bits = zero(UInt)
+    index = 0
+    for i in itr
+        index += 1
+        index > L && throw(BoundsError(StackVector{L}(), index))
+        val = convert(UInt, convert(Bool, i))
+        bits |= (val << ((index-1) & 63))
+    end
+    StackVector{L}(bits, unsafe)
+end
 
 function Base.getindex(s::StackVector, i::Int)
     @boundscheck checkbounds(s, i)
-    return (s.x >>> unsigned(i-1)) & 1 == 1
+    return isodd(s.x >>> unsigned(i-1))
 end
 
 function setindex(s::StackVector, v::Bool, i::Int)
     @boundscheck checkbounds(s, i)
-    u = 1 << unsigned(i-1)
+    u = UInt(1) << ((i-1) & 63)
     typeof(s)(ifelse(v, s.x | u, s.x & ~u), unsafe)
 end
 
-function Base.iterate(s::StackVector, i::Int=1)
-    i > length(s) && return nothing
-    @inbounds (s[i], i+1)
+function Base.iterate(s::StackVector, i::Int=0)
+    i+1 > length(s) && return nothing
+    isodd(s.x >>> (i&63)), i+1
 end
 
 Base.in(v::Bool, s::StackVector{L}) where L = !iszero(ifelse(v, s.x, s.x ⊻ mask(L)))
-
 Base.isempty(s::StackVector{L}) where L = iszero(L)
 
+Base.maximum(s::StackVector) = !minimum(!s)
 function Base.minimum(s::StackVector{L}) where L
     isempty(s) && throw(ArgumentError("cannot take minimum of empty collection"))
-    ifelse(s.x == mask(L), true, false)
-end
-
-function Base.maximum(s::StackVector{L}) where L
-    isempty(s) && throw(ArgumentError("cannot take maximum of empty collection"))
-    ifelse(iszero(s.x), false, true)
+    return s.x == mask(L)
 end
 
 Base.sum(s::StackVector) = count_ones(s.x)
 
 function Base.convert(::Type{BitVector}, s::StackVector)
-    b = trues(length(s))
+    b = BitVector(undef, length(s))
     !isempty(s) && @inbounds b.chunks[1] = s.x
     b
 end
 
-Base.:!(s::StackVector) = typeof(s)(s.x ⊻ mask, unsafe)
+Base.:!(s::StackVector{L}) where L = StackVector{L}(s.x ⊻ mask(L), unsafe)
 
 function Base.filter(f::Function, s::StackVector{L}) where L
     ft::Bool = f(true)
@@ -64,7 +78,29 @@ function Base.filter(f::Function, s::StackVector{L}) where L
     return s
 end
 
-# Need to test this TODO
+function Base.findfirst(s::StackVector{L}) where L
+    isempty(s) && return nothing
+    i = trailing_zeros(s.x) + 1
+    i > L && return nothing
+    return i
+end
+
+function Base.findfirst(f::Function, s::StackVector{L}) where L
+    isempty(s) && return nothing
+    ft::Bool = f(true)
+    ff::Bool = f(false)
+    ft & ff && return 1
+    !(ft | ff) && return nothing
+    return findfirst(ifelse(ft, s, !s))
+end
+
+Base.argmin(s::StackVector) = argmax(!s)
+function Base.argmax(s::StackVector)
+    isempty(s) && throw(ArgumentError("collection must be non-empty"))
+    f = findfirst(s)
+    return f === nothing ? 1 : f
+end
+
 function Base.reverse(s::StackVector)
     x = s.x
     x = ((x & 0xaaaaaaaaaaaaaaaa) >>> 1)  | ((x & 0x5555555555555555) << 1)
@@ -77,8 +113,11 @@ function Base.reverse(s::StackVector)
     typeof(s)(x, unsafe)
 end
 
-# 1 rotate k right, & with mask, save as x
-# rotate 64-L+k right, & with ((1<<k-1) << (L-k)), save as y
-# result is y | x
-# alternatively, use naive rot
-#Base.circshift(s::StackVector)
+function Base.circshift(s::StackVector{L}, k::Int) where L
+    iszero(L) && return s
+    shift = abs(k) % L
+    left = ifelse(k < 0, L+k, k) & 63
+    right = (L - left) & 63
+    bits = ((s.x << left) | (s.x >>> right)) & mask(L)
+    return StackVector{L}(bits, unsafe)
+end
