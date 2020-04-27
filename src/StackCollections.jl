@@ -1,4 +1,4 @@
-module t
+module StackCollections
 
 struct Unsafe end
 const unsafe = Unsafe()

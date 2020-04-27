@@ -20,7 +20,7 @@ function Base.hash(x::StackVector{L}, h::UInt) where L
 end
 
 StackVector{L}() where L = StackVector{L}(UInt(0), unsafe)
-StackVector(x...) = StackVector{Sys.WORD_SIZE}(x...)
+StackVector(x...) = StackVector{Sys.WORD_SIZE}(x)
 
 function StackVector{L}(itr) where L
     bits = zero(UInt)
@@ -106,9 +106,7 @@ function Base.reverse(s::StackVector)
     x = ((x & 0xaaaaaaaaaaaaaaaa) >>> 1)  | ((x & 0x5555555555555555) << 1)
     x = ((x & 0xcccccccccccccccc) >>> 2)  | ((x & 0x3333333333333333) << 2)
     x = ((x & 0xf0f0f0f0f0f0f0f0) >>> 4)  | ((x & 0x0f0f0f0f0f0f0f0f) << 4)
-    x = ((x & 0xff00ff00ff00ff00) >>> 8)  | ((x & 0x00ff00ff00ff00ff) << 8)
-    x = ((x & 0xffff0000ffff0000) >>> 16) | ((x & 0x0000ffff0000ffff) << 16)
-    x = ((x & 0xffffffff00000000) >>> 32) | ((x & 0x00000000ffffffff) << 32)
+    x = bswap(x)
     x >>>= sizeof(UInt) << 3 - length(s)
     typeof(s)(x, unsafe)
 end

@@ -71,7 +71,7 @@ end
 pop(s::AbstractStackSet, v::Int) = in(s, v) ? delete(s, v, unsafe) : throw(KeyError(v))
 delete(s::DigitSet, v::Int) = ifelse(v ≥ Sys.WORD_SIZE, s, delete(s, v, unsafe))
 function delete(s::DigitSet, v::Int, ::Unsafe)
-    mask = (typemax(UInt) - 1) << (unsigned(v) & (Sys.WORD_SIZE - 1))
+    mask = ~(UInt(1) << (unsigned(v) & (Sys.WORD_SIZE - 1)))
     DigitSet(s.x & mask)
 end
 
