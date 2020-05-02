@@ -5,7 +5,8 @@ This package implements a few collection types that can be stored in one or a fe
 
 * `DigitSet`: A set of integers 0:63
 * `StackSet`: A set of integers N:N+63
-* `StackVector{L}`: A boolean vector with a length of up to 64.
+* `StackVector{L}`: A boolean vector with a length `L` of up to 64.
+* `OneHotVector`: A boolean vector with exactly one value `true`, rest `false`.
 
 The main features of the types are:
 * They are simple to use, implements the basic methods from `Base` you would expect such as `union` for sets and `reverse` for vectors:

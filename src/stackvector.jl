@@ -11,7 +11,6 @@ end
 mask(L) = UInt(1) << L - 1
 Base.size(s::StackVector) = (length(s),)
 Base.length(s::StackVector{L}) where L = L
-Base.:(==)(x::StackVector, y::StackVector) = x === y
 
 function Base.hash(x::StackVector{L}, h::UInt) where L
     base = (0x93774c8a392b33bb % UInt) * L
