@@ -53,12 +53,14 @@ end
 
 function push(s::StackSet, x::Int)
     newoffset, lshift = new_offset(s, x)
-    leading_zeros(s.set.x) < lshift && throw_StackSet_range_err()
+    !isempty(s) & (leading_zeros(s.set.x) < lshift) && throw_StackSet_range_err()
     newset = push(DigitSet(s.set.x << (lshift & 63)), x-newoffset)
     return StackSet(newset, newoffset, unsafe)
 end
 
+Base.maximum(x::StackSet, ::Unsafe) = maximum(x.set, unsafe) + x.offset
 Base.maximum(x::StackSet) = maximum(x.set) + x.offset
+Base.minimum(x::StackSet, ::Unsafe) = minimum(x.set, unsafe) + x.offset
 Base.minimum(x::StackSet) = minimum(x.set) + x.offset
 Base.in(x::Int, s::StackSet) = in(x-s.offset, s.set)
 
@@ -70,8 +72,8 @@ function Base.filter(pred, s::StackSet)
     normalized(StackSet(r, s.offset, unsafe))
 end
 
-delete(s::StackSet, v::Int, ::Unsafe) = normalized(delete(s.set, v-s.offset, unsafe), s.offset)
-delete(s::StackSet, v::Int) = normalized(delete(s.set, v-s.offset), s.offset)
+delete(s::StackSet, v::Int) = StackSet(delete(s.set, v-s.offset), s.offset)
+pop(s::StackSet, v::Int) = in(v, s) ? delete(s, v) : throw(KeyError(v))
 
 function Base.intersect(x::StackSet, y::StackSet)
     new_x_set = trunc_offset_stackset(x, y)
@@ -94,26 +96,30 @@ function normalized(s::StackSet)
     return StackSet(DigitSet(s.set.x >>> (rshift & 63)), offset, unsafe)
 end
 
-# Return sets with lower offset, or non-empty's offset
-function offset_to_lower(smaller::StackSet, bigger::StackSet)
-    if (isempty(smaller) | isempty(bigger))
-        return smaller.set, bigger.set
-    end
+# Returns DigitSets both with the lowest set's offset
+# throws an error if any information would be lost by bitshifts.
+# It is assumed none of the sets are empty
+@inline function offset_to_lower(smaller::StackSet, bigger::StackSet)
     lshift = unsigned(bigger.offset - smaller.offset)
-    leading_zeros(bigger.set.x) < lshift && throw_StackSet_range_err()
+    unsigned(leading_zeros(bigger.set.x)) < lshift && throw_StackSet_range_err()
     shifted = bigger.set.x << (lshift & 63)
     return smaller.set, DigitSet(shifted)
 end
 
 function Base.union(x::StackSet, y::StackSet)
+    isempty(x) && return y
+    isempty(y) && return x
     (smaller, bigger) = ifelse(x.offset < y.offset, (x, y), (y, x))
     sm_set, bg_set = offset_to_lower(smaller, bigger)
     return StackSet(union(sm_set, bg_set), smaller.offset, unsafe)
 end
 
 function Base.symdiff(x::StackSet, y::StackSet)
+    isempty(x) && return y
+    isempty(y) && return x
     (smaller, bigger) = ifelse(x.offset < y.offset, (x, y), (y, x))
     sm_set, bg_set = offset_to_lower(smaller, bigger)
-    ss = StackSet(symdiff(sm_set, bg_set), smaller.offset, unsafe)
-    return normalized(ss)
+    
+    # Unlike for union, we need to normalize here, so no unsafe construction
+    return StackSet(symdiff(sm_set, bg_set), smaller.offset)
 end

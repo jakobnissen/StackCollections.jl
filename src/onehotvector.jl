@@ -49,12 +49,6 @@ Base.iterate(v::OneHotVector, i=1) = i > length(v) ? nothing : (i == v.index, i+
 Base.count(::typeof(identity), v::OneHotVector) = 1
 Base.allunique(v::OneHotVector) = length(v) < 3
 
-function dot(v1::AbstractVector, v::OneHotVector)
-    promote_shape(v1, v2)
-    return @inbounds v1[v.index]
-end
-dot(v::OneHotVector, v1::AbstractVector) = dot(v1, v)
-
 for f in (:(Base.:+), :(Base.:-))
     @eval function ($f)(v::OneHotVector, v1::Vector)
         promote_shape(v, v1)

@@ -1,5 +1,3 @@
-module TestStackCollections
-
 using Test
 using StackCollections
 
@@ -7,6 +5,7 @@ using StackCollections
 include("digitset.jl")
 end
 
+#=
 @testset "StackSet" begin
 include("stackset.jl")
 end
@@ -14,5 +13,4 @@ end
 @testset "StackVector" begin
 include("stackvector.jl")
 end
-
-end # module
+=#

@@ -19,7 +19,7 @@ function Base.hash(x::StackVector{L}, h::UInt) where L
 end
 
 StackVector{L}() where L = StackVector{L}(UInt(0), unsafe)
-StackVector(x...) = StackVector{Sys.WORD_SIZE}(x)
+StackVector(x...) = StackVector{Sys.WORD_SIZE}(x...)
 
 function StackVector{L}(itr) where L
     bits = zero(UInt)

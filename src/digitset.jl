@@ -45,11 +45,17 @@ end
 
 Base.in(x::Int, s::DigitSet) = isodd(s.x >>> unsigned(x))
 Base.length(x::DigitSet) = count_ones(x.x)
-Base.minimum(x::AbstractStackSet) = first(x)
 
+Base.maximim(x::DigitSet, ::Unsafe) = Sys.WORD_SIZE - 1 - leading_zeros(x.x)
 function Base.maximum(x::DigitSet)
     isempty(x) && throw(ArgumentError("collection must be non-empty"))
-    Sys.WORD_SIZE - 1 - leading_zeros(x.x)
+    return maximum(x, unsafe)
+end
+
+Base.minimum(x::DigitSet, ::Unsafe) = trailing_zeros(x.x)
+function Base.minimum(x::DigitSet)
+    isempty(x) && throw(ArgumentError("collection must be non-empty"))
+    return minimum(x, unsafe)
 end
 
 function push(s::DigitSet, v::Int, ::Unsafe)
@@ -60,6 +66,13 @@ function push(s::DigitSet, v::Int)
     unsigned(v) ≥ Sys.WORD_SIZE ? throw_DigitSet_digit_err() : push(s, v, unsafe)
 end
 
+function push(s::DigitSet, vs...)
+    for v in vs
+        s = push(s, convert(Int, v))
+    end
+    s
+end
+
 function Base.filter(pred, x::DigitSet)
     r = DigitSet()
     for i in x
@@ -68,14 +81,31 @@ function Base.filter(pred, x::DigitSet)
     r
 end
 
-pop(s::AbstractStackSet, v::Int) = in(s, v) ? delete(s, v, unsafe) : throw(KeyError(v))
-delete(s::DigitSet, v::Int) = ifelse(v ≥ Sys.WORD_SIZE, s, delete(s, v, unsafe))
+pop(s::AbstractStackSet, v::Int) = in(v, s) ? delete(s, v, unsafe) : throw(KeyError(v))
+delete(s::DigitSet, v::Int) = ifelse((v < 0) | (v ≥ Sys.WORD_SIZE), s, delete(s, v, unsafe))
 function delete(s::DigitSet, v::Int, ::Unsafe)
     mask = ~(UInt(1) << (unsigned(v) & (Sys.WORD_SIZE - 1)))
     DigitSet(s.x & mask)
 end
 
 Base.issubset(x::DigitSet, y::DigitSet) = isempty(setdiff(x, y))
+
+"""
+    isdisjoint(x, y) -> Bool
+    
+Check if `x` and `y` have no elements in common.
+    
+# Examples
+julia> isdisjoint(DigitSet([1,6,4]), DigitSet([0, 61, 44]))
+true
+
+julia> isdisjoint(DigitSet([1,6,4]), DigitSet([4, 61, 44]))
+false
+
+julia> isdisjoint(DigitSet(), DigitSet())
+true
+```
+"""
 isdisjoint(x::DigitSet, y::DigitSet) = isempty(intersect(x, y))
 for (func, op) in ((:union, :|), (:intersect, :&), (:symdiff, :⊻))
     @eval begin

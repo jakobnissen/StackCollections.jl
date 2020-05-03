@@ -1,7 +1,5 @@
 module StackCollections
 
-import LinearAlgebra: dot
-
 struct Unsafe end
 const unsafe = Unsafe()
 
