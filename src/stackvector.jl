@@ -3,7 +3,7 @@ struct StackVector{L} <: AbstractVector{Bool}
 
     function StackVector{L}(x::UInt, ::Unsafe) where L
         L isa Int || throw(TypeError(:StackVector, "", Int, typeof(L)))
-        ((L ≤ Sys.WORD_SIZE) & (L > -1)) || throw(DomainError(M, "L must be 0:$(Sys.WORD_SIZE)"))
+        ((L ≤ Sys.WORD_SIZE) & (L > -1)) || throw(DomainError(L, "L must be 0:$(Sys.WORD_SIZE)"))
         new(x)
     end
 end
@@ -20,6 +20,9 @@ end
 
 StackVector{L}() where L = StackVector{L}(UInt(0), unsafe)
 StackVector(x...) = StackVector{Sys.WORD_SIZE}(x...)
+@noinline function toofew(L)
+    throw(ArgumentError("StackVector{$L} must be constructed from $L elements"))
+end
 
 function StackVector{L}(itr) where L
     bits = zero(UInt)
@@ -30,6 +33,7 @@ function StackVector{L}(itr) where L
         val = convert(UInt, convert(Bool, i))
         bits |= (val << ((index-1) & 63))
     end
+    index == L || toofew(L)
     StackVector{L}(bits, unsafe)
 end
 

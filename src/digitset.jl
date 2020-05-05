@@ -46,7 +46,7 @@ end
 Base.in(x::Int, s::DigitSet) = isodd(s.x >>> unsigned(x))
 Base.length(x::DigitSet) = count_ones(x.x)
 
-Base.maximim(x::DigitSet, ::Unsafe) = Sys.WORD_SIZE - 1 - leading_zeros(x.x)
+Base.maximum(x::DigitSet, ::Unsafe) = Sys.WORD_SIZE - 1 - leading_zeros(x.x)
 function Base.maximum(x::DigitSet)
     isempty(x) && throw(ArgumentError("collection must be non-empty"))
     return maximum(x, unsafe)
