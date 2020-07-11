@@ -3,7 +3,7 @@ struct StackVector{L} <: AbstractVector{Bool}
 
     function StackVector{L}(x::UInt, ::Unsafe) where L
         L isa Int || throw(TypeError(:StackVector, "", Int, typeof(L)))
-        ((L ≤ Sys.WORD_SIZE) & (L > -1)) || throw(DomainError("L must be 0:$(Sys.WORD_SIZE)"))
+        ((L ≤ Sys.WORD_SIZE) & (L > -1)) || throw(DomainError(L, "L must be 0:$(Sys.WORD_SIZE)"))
         new(x)
     end
 end

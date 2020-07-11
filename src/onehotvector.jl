@@ -45,7 +45,6 @@ end
 Base.getindex(v::OneHotVector, ::Colon) = v
 Base.argmax(v::OneHotVector) = v.index
 Base.argmin(v::OneHotVector) = 1 + ((v.index == 1) & (length(v) != 1))
-Base.iterate(v::OneHotVector, i=1) = i > length(v) ? nothing : (i == v.index, i+1)
 Base.count(::typeof(identity), v::OneHotVector) = 1
 Base.allunique(v::OneHotVector) = length(v) < 3
 
