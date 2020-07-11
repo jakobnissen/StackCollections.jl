@@ -1,11 +1,11 @@
-using Test
 using StackCollections
+using Test
 
+#=
 @testset "DigitSet" begin
 include("digitset.jl")
 end
 
-#=
 @testset "StackSet" begin
 include("stackset.jl")
 end
@@ -14,3 +14,7 @@ end
 include("stackvector.jl")
 end
 =#
+
+@testset "OneHotVector" begin
+include("onehotvector.jl")
+end

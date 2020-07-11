@@ -3,7 +3,7 @@ struct StackVector{L} <: AbstractVector{Bool}
 
     function StackVector{L}(x::UInt, ::Unsafe) where L
         L isa Int || throw(TypeError(:StackVector, "", Int, typeof(L)))
-        ((L ≤ Sys.WORD_SIZE) & (L > -1)) || throw(DomainError(M, "L must be 0:$(Sys.WORD_SIZE)"))
+        ((L ≤ Sys.WORD_SIZE) & (L > -1)) || throw(DomainError("L must be 0:$(Sys.WORD_SIZE)"))
         new(x)
     end
 end
@@ -19,19 +19,36 @@ function Base.hash(x::StackVector{L}, h::UInt) where L
 end
 
 StackVector{L}() where L = StackVector{L}(UInt(0), unsafe)
-StackVector(x...) = StackVector{Sys.WORD_SIZE}(x...)
+StackVector() = StackVector{0}()
+StackVector{0}() = StackVector{0}(zero(UInt), unsafe)
+
+function StackVector(itr)
+    bits, index = packbits(itr, Sys.WORD_SIZE)
+    return StackVector{index}(bits, unsafe)
+end
 
 function StackVector{L}(itr) where L
+    bits, index = packbits(itr, L)
+    index == L || throw_mismatch_err(L, index)
+    return StackVector{L}(bits, unsafe)
+end
+
+@noinline function throw_mismatch_err(L, observed)
+    throw(DimensionMismatch("StackVector{$L} needs L elements, not $observed"))
+end
+
+function packbits(itr, maxbits)
     bits = zero(UInt)
     index = 0
     for i in itr
         index += 1
-        index > L && throw(BoundsError(StackVector{L}(), index))
+        index > maxbits && throw_mismatch_err(maxbits, index)
         val = convert(UInt, convert(Bool, i))
         bits |= (val << ((index-1) & 63))
     end
-    StackVector{L}(bits, unsafe)
+    return bits, index
 end
+
 
 function Base.getindex(s::StackVector, i::Int)
     @boundscheck checkbounds(s, i)
@@ -52,9 +69,9 @@ end
 Base.in(v::Bool, s::StackVector{L}) where L = !iszero(ifelse(v, s.x, s.x ⊻ mask(L)))
 Base.isempty(s::StackVector{L}) where L = iszero(L)
 
-Base.maximum(s::StackVector) = !minimum(!s)
+Base.maximum(s::StackVector) = !minimum(~s)
 function Base.minimum(s::StackVector{L}) where L
-    isempty(s) && throw(ArgumentError("cannot take minimum of empty collection"))
+    isempty(s) && throw(ArgumentError("collection must be non-empty"))
     return s.x == mask(L)
 end
 
@@ -66,16 +83,7 @@ function Base.convert(::Type{BitVector}, s::StackVector)
     b
 end
 
-Base.:!(s::StackVector{L}) where L = StackVector{L}(s.x ⊻ mask(L), unsafe)
-
-function Base.filter(f::Function, s::StackVector{L}) where L
-    ft::Bool = f(true)
-    ff::Bool = f(false)
-    ft & ff && return typeof(s)(mask(L), unsafe)
-    !(ft | ff) && return typeof(s)(zero(UInt), unsafe)
-    ff && return !s
-    return s
-end
+Base.:~(s::StackVector{L}) where L = StackVector{L}(s.x ⊻ mask(L), unsafe)
 
 function Base.findfirst(s::StackVector{L}) where L
     isempty(s) && return nothing
@@ -90,10 +98,10 @@ function Base.findfirst(f::Function, s::StackVector{L}) where L
     ff::Bool = f(false)
     ft & ff && return 1
     !(ft | ff) && return nothing
-    return findfirst(ifelse(ft, s, !s))
+    return findfirst(ifelse(ft, s, ~s))
 end
 
-Base.argmin(s::StackVector) = argmax(!s)
+Base.argmin(s::StackVector) = argmax(~s)
 function Base.argmax(s::StackVector)
     isempty(s) && throw(ArgumentError("collection must be non-empty"))
     f = findfirst(s)
@@ -112,8 +120,8 @@ end
 
 function Base.circshift(s::StackVector{L}, k::Int) where L
     iszero(L) && return s
-    shift = abs(k) % L
-    left = ifelse(k < 0, L+k, k) & 63
+    shift = k % L
+    left = ifelse(k < 0, L+shift, shift) & 63
     right = (L - left) & 63
     bits = ((s.x << left) | (s.x >>> right)) & mask(L)
     return StackVector{L}(bits, unsafe)
