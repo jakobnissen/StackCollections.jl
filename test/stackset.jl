@@ -67,6 +67,7 @@ end
                 @test_throws ArgumentError s2 = push(s, i)
             else
                 @test Set(push(s, i)) == push!(copy(s´), i)
+                @test push(s, i, StackCollections.unsafe) == push(s, i)
             end
         end
     end

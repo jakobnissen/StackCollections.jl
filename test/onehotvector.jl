@@ -49,11 +49,11 @@ end
             v´ = collect(v)
 
             @test v[:] === v
-            @test count(v) == 1
+            @test count(identity, v) == count(v) == 1
 
             for F in [argmax, argmin, sum, count, allunique,
                       x -> findfirst(isodd, x), x -> findfirst(isequal(4), x),
-                      x -> findfirst(y -> false, x)]
+                      x -> findfirst(y -> false, x), x -> findfirst(~, x)]
                 @test F(v) == F(v´)
             end
 

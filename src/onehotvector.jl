@@ -86,7 +86,7 @@ function Base.findfirst(f::Function, v::OneHotVector)
     ft & ff && return 1
     !(ft | ff) && return nothing
     ft && return v.index
-    ff && return ifelse(length(v) == 1, nothing, 1 + v.index == 1)
+    ff && return ifelse(length(v) == 1, nothing, 1 + (v.index == 1))
 end
 
 function Base.circshift(v::OneHotVector, s::Integer)
