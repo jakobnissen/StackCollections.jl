@@ -1,3 +1,12 @@
+"""
+    StackSet([itr])
+
+Construct a `StackSet`, an `AbstractSet{Int}` which can only contains numbers
+N:N+63. A `Stackset` is stored in memory as a `DigitSet` and an integer offset,
+and is immutable
+
+See also: [`StackSet`](@ref)
+"""
 struct StackSet <: AbstractStackSet
     set::DigitSet
     offset::Int # lowest value in set, 0 if set is empty
@@ -119,7 +128,7 @@ function Base.symdiff(x::StackSet, y::StackSet)
     isempty(y) && return x
     (smaller, bigger) = ifelse(x.offset < y.offset, (x, y), (y, x))
     sm_set, bg_set = offset_to_lower(smaller, bigger)
-    
+
     # Unlike for union, we need to normalize here, so no unsafe construction
     return StackSet(symdiff(sm_set, bg_set), smaller.offset)
 end

@@ -1,3 +1,9 @@
+"""
+    StackVector{L}([itr])
+
+Construct a `StackVector` containing `L` `Bool` values.
+A `StackVector` is stored as an integer in memory and is immutable.
+"""
 struct StackVector{L} <: AbstractVector{Bool}
     x::UInt
 
@@ -55,6 +61,25 @@ function Base.getindex(s::StackVector, i::Int)
     return isodd(s.x >>> unsigned(i-1))
 end
 
+"""
+    setindex(collection, v, i::Int)
+
+Return a copy of `collection` with the value at index `i` set to `v`.
+
+# Examples
+
+```jldoctest
+julia> x = StackVector([true, false])
+2-element StackVector{2}:
+ 1
+ 0
+
+julia> setindex(x, false, 1)
+2-element StackVector{2}:
+ 0
+ 0
+```
+"""
 function setindex(s::StackVector, v::Bool, i::Int)
     @boundscheck checkbounds(s, i)
     u = UInt(1) << ((i-1) & 63)

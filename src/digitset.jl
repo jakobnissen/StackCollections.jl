@@ -1,3 +1,11 @@
+"""
+    DigitSet([itr])
+
+Construct a `DigitSet`, an `AbstractSet{Int}` which can only contains numbers 0:63.
+A `DigitSet` is stored as a single integer in memory, and is immutable.
+
+See also: [`StackSet`](@ref)
+"""
 struct DigitSet <: AbstractStackSet
     x::UInt
 
@@ -62,6 +70,26 @@ function push(s::DigitSet, v::Int, ::Unsafe)
     DigitSet(s.x | (1 << (unsigned(v) & (Sys.WORD_SIZE - 1))))
 end
 
+"""
+    push(collection, items...)
+
+Return a new collection containing all elements of `collection` and of `items`.
+
+# Examples
+
+```jldoctest
+julia> s = DigitSet([4, 9]);
+
+julia> push(s, 1, 11)
+DigitSet with 4 elements:
+  1
+  4
+  9
+  11
+```
+"""
+function push end
+
 function push(s::DigitSet, v::Int)
     unsigned(v) ≥ Sys.WORD_SIZE ? throw_DigitSet_digit_err() : push(s, v, unsafe)
 end
@@ -81,7 +109,48 @@ function Base.filter(pred, x::DigitSet)
     r
 end
 
+"""
+    pop(s::AbstractStackSet, v::Int)
+
+Return a copy of `s` without `v`. If `v` is not in `s`, raise an error.
+# Examples
+
+```jldoctest
+julia> s = DigitSet([4, 41, 9]);
+
+julia> pop(s, 41)
+DigitSet with 2 elements:
+  4
+  9
+```
+
+See also: [`delete`](@ref)
+"""
+function pop end
+
 pop(s::AbstractStackSet, v::Int) = in(v, s) ? delete(s, v, unsafe) : throw(KeyError(v))
+
+"""
+    delete(s::AbstractStackSet, v::Int)
+
+Return a copy of `s` that does not contain without `v`.
+
+# Examples
+
+```jldoctest
+julia> s = DigitSet([4, 41, 9]);
+
+julia> delete(s, 1)
+DigitSet with 3 elements:
+  4
+  9
+  41
+```
+
+See also: [`pop`](@ref)
+"""
+function delete end
+
 delete(s::DigitSet, v::Int) = ifelse((v < 0) | (v ≥ Sys.WORD_SIZE), s, delete(s, v, unsafe))
 function delete(s::DigitSet, v::Int, ::Unsafe)
     mask = ~(UInt(1) << (unsigned(v) & (Sys.WORD_SIZE - 1)))
@@ -96,6 +165,8 @@ Base.issubset(x::DigitSet, y::DigitSet) = isempty(setdiff(x, y))
 Check if `x` and `y` have no elements in common.
 
 # Examples
+
+```jldoctest
 julia> isdisjoint(DigitSet([1,6,4]), DigitSet([0, 61, 44]))
 true
 
@@ -106,6 +177,8 @@ julia> isdisjoint(DigitSet(), DigitSet())
 true
 ```
 """
+function isdisjoint end
+
 isdisjoint(x::DigitSet, y::DigitSet) = isempty(intersect(x, y))
 for (func, op) in ((:union, :|), (:intersect, :&), (:symdiff, :⊻))
     @eval begin
