@@ -16,6 +16,20 @@ end
 
 StackSet(set::DigitSet, offset::Int) = normalized(StackSet(set, offset, unsafe))
 
+function StackSet(set::DigitSet)
+    offset = ifelse(isempty(set), 0, minimum(set, unsafe))
+    return StackSet(DigitSet(set.x >>> (offset & 63)), offset, unsafe)
+end
+
+function DigitSet(set::StackSet)
+    if (minimum(set, unsafe) < 0) | maximum(set, unsafe) > (Sys.WORD_SIZE-1)
+        throw_DigitSet_digit_err()
+    end
+    return DigitSet(set.set.x << (set.offset & 63))
+end
+
+Base.promote_rule(::Type{<:AbstractStackSet}, ::Type{<:AbstractStackSet}) = StackSet
+
 function Base.hash(x::StackSet, h::UInt)
     base = 0x30a9fa66b925af5a % UInt
     h = hash(base, h)

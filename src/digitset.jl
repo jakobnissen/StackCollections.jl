@@ -13,6 +13,7 @@ struct DigitSet <: AbstractStackSet
 end
 
 DigitSet() = DigitSet(zero(UInt))
+
 function DigitSet(itr)
     d = DigitSet()
     for i in itr
@@ -23,26 +24,24 @@ end
 
 function Base.hash(x::DigitSet, h::UInt)
     base = 0x0cabd57b4f53416a % UInt
-    h = hash(base, h)
-    return hash(x.x, h)
+    return hash(x.x, h ⊻ base)
 end
 
 @noinline function throw_DigitSet_digit_err()
     throw(ArgumentError("DigitSet can only contain 0:$(Sys.WORD_SIZE-1)"))
 end
 
+function show(io::IO, s::AbstractStackSet)
+    print(io, "$(typeof(s))(")
+    Base.show_vector(io, s)
+    print(io, ')')
+end
+
 Base.empty(x::DigitSet) = DigitSet()
 Base.isempty(x::DigitSet) = iszero(x.x)
 Base.:(==)(x::AbstractStackSet, y::AbstractStackSet) = x === y
-Base.:⊊(x::DigitSet, y::DigitSet) = issubset(x, y) & (x != y)
+Base.:⊊(x::AbstractStackSet, y::AbstractStackSet) = issubset(x, y) & (x != y)
 Base.allunique(x::AbstractStackSet) = true
-
-# Julia PR33300 - improved printing of AbstractSets make this obsolete
-@static if VERSION < v"1.4"
-    function Base.show(io::IO, s::AbstractStackSet)
-        print(io, "$(typeof(s).name)([", join(s, ','), "])")
-    end
-end
 
 function Base.iterate(x::DigitSet, state::Int=0)
     bits = x.x >>> unsigned(state)
@@ -157,52 +156,70 @@ function delete(s::DigitSet, v::Int, ::Unsafe)
     DigitSet(s.x & mask)
 end
 
-Base.issubset(x::DigitSet, y::DigitSet) = isempty(setdiff(x, y))
+Base.issubset(x::AbstractStackSet, y::AbstractStackSet) = isempty(setdiff(x, y))
 
-"""
-    isdisjoint(x, y) -> Bool
+# isdisjoint was added to Base in 1.5
+@static if VERSION < v"1.5"
+    """
+        isdisjoint(x, y) -> Bool
 
-Check if `x` and `y` have no elements in common.
+    Check if `x` and `y` have no elements in common.
 
-# Examples
+    # Examples
 
-```jldoctest
-julia> isdisjoint(DigitSet([1,6,4]), DigitSet([0, 61, 44]))
-true
+    ```jldoctest
+    julia> isdisjoint(DigitSet([1,6,4]), DigitSet([0, 61, 44]))
+    true
 
-julia> isdisjoint(DigitSet([1,6,4]), DigitSet([4, 61, 44]))
-false
+    julia> isdisjoint(DigitSet([1,6,4]), DigitSet([4, 61, 44]))
+    false
 
-julia> isdisjoint(DigitSet(), DigitSet())
-true
-```
-"""
-function isdisjoint end
+    julia> isdisjoint(DigitSet(), DigitSet())
+    true
+    ```
+    """
+    function isdisjoint end
+    isdisjoint(x::AbstractStackSet, y::AbstractStackSet) = isempty(intersect(x, y))
+else
+    Base.isdisjoint(x::AbstractStackSet, y::AbstractStackSet) = isempty(intersect(x, y))
+end
 
-isdisjoint(x::DigitSet, y::DigitSet) = isempty(intersect(x, y))
-for (func, op) in ((:union, :|), (:intersect, :&), (:symdiff, :⊻))
+Base.intersect(x::DigitSet, y::DigitSet) = DigitSet(x.x & y.x)
+Base.setdiff(x::DigitSet, y::DigitSet) = DigitSet(x.x & ~y.x)
+
+# These functions work even if the collections in `itrs` contains elements not
+# in 0:63.
+for func in (:intersect, :setdiff)
+    @eval begin
+        function Base.$(func)(x::DigitSet, itrs...)
+            y = x
+            for i in itrs
+                z = DigitSet()
+                for j in i
+                    if j in y
+                        z = push(z, j)
+                    end
+                end
+                y = $func(y, z)
+            end
+            return y
+        end
+    end
+end
+
+# These functions must fail if any item in a collection in `itrs` are not in 0:63
+for (func, op) in ((:union, :|), (:symdiff, :⊻))
     @eval begin
         function Base.$(func)(x::DigitSet, y::DigitSet)
             DigitSet($op(x.x, y.x))
         end
 
-        Base.$(func)(x, y::DigitSet) = $func(y, x)
-        function Base.$(func)(x::DigitSet, itr...)
-            for i in itr
+        function Base.$(func)(x::DigitSet, itrs...)
+            for i in itrs
                 y_ = DigitSet(i)
                 x = $func(x, y_)
             end
             x
         end
     end
-end
-
-Base.setdiff(x::DigitSet, y::DigitSet) = DigitSet(x.x & ~y.x)
-function Base.setdiff(x::DigitSet, itr...)
-    union_ = DigitSet
-    for i in itr
-        y_ = DigitSet(i)
-        union_ = union(union_, y_)
-    end
-    return setdiff(x, union_)
 end
