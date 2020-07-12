@@ -39,7 +39,7 @@ end
 
 Base.empty(x::DigitSet) = DigitSet()
 Base.isempty(x::DigitSet) = iszero(x.x)
-Base.:(==)(x::AbstractStackSet, y::AbstractStackSet) = x === y
+Base.:(==)(x::T, y::T) where T<:AbstractStackSet = x === y
 Base.:⊊(x::AbstractStackSet, y::AbstractStackSet) = issubset(x, y) & (x != y)
 Base.allunique(x::AbstractStackSet) = true
 

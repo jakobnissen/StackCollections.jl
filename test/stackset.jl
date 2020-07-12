@@ -128,3 +128,24 @@ end
         @test issubset(Set{Int}(v2), Set{Int}(v1)) == issubset(StackSet(v2), StackSet(v1))
     end
 end
+
+@testset "Convert to/from DigitSet" begin
+    for bad in [(-1,), (44, 10, -3), (55, 65), (101, 102, 103)]
+        s = StackSet(bad)
+        @test_throws ArgumentError DigitSet(s)
+    end
+    for good in [(0, 1, 2, 3), 14:21, 1:4:60, (61, 62, 1, 9), (), (0,)]
+        s = StackSet(good)
+        d = DigitSet(good)
+        @test s == d
+        @test collect(s) == collect(d)
+
+        s2 = StackSet(d)
+        d2 = DigitSet(s)
+        @test s == d == s2 == d2
+        @test collect(s) == collect(s2) == collect(d2)
+    end
+
+    @test DigitSet([1,2,39]) != StackSet([1, 2, 40])
+    @test DigitSet([0,1,2]) != StackSet([5,6,7])
+end
