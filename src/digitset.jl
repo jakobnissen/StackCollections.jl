@@ -184,17 +184,24 @@ else
     Base.isdisjoint(x::AbstractStackSet, y::AbstractStackSet) = isempty(intersect(x, y))
 end
 
-Base.intersect(x::DigitSet, y::DigitSet) = DigitSet(x.x & y.x)
 Base.setdiff(x::DigitSet, y::DigitSet) = DigitSet(x.x & ~y.x)
+
+for (func, op) in ((:union, :|), (:symdiff, :⊻), (:intersect, :&))
+    @eval begin
+        function Base.$(func)(x::DigitSet, y::DigitSet)
+            DigitSet($op(x.x, y.x))
+        end
+    end
+end
 
 # These functions work even if the collections in `itrs` contains elements not
 # in 0:63.
 for func in (:intersect, :setdiff)
     @eval begin
-        function Base.$(func)(x::DigitSet, itrs...)
+        function Base.$(func)(x::AbstractStackSet, itrs...)
             y = x
             for i in itrs
-                z = DigitSet()
+                z = typeof(x)()
                 for j in i
                     if j in y
                         z = push(z, j)
@@ -207,19 +214,16 @@ for func in (:intersect, :setdiff)
     end
 end
 
-# These functions must fail if any item in a collection in `itrs` are not in 0:63
-for (func, op) in ((:union, :|), (:symdiff, :⊻))
-    @eval begin
-        function Base.$(func)(x::DigitSet, y::DigitSet)
-            DigitSet($op(x.x, y.x))
-        end
-
-        function Base.$(func)(x::DigitSet, itrs...)
-            for i in itrs
-                y_ = DigitSet(i)
-                x = $func(x, y_)
-            end
-            x
-        end
+# This functions must fail if any item in a collection in `itrs` are not in
+# the applicable domain, e.g. 0:63 for DigitSet
+function Base.union(x::AbstractStackSet, itrs...)
+    for i in itrs
+        y_ = typeof(x)(i)
+        x = union(x, y_)
     end
+    return x
 end
+
+# This function needs to extend past 0:63, because it needs to keep track of
+# which elements have been added and/or canceled by the iterables
+Base.symdiff(x::AbstractStackSet, itrs...) = typeof(x)(symdiff(Set(x), itrs...))

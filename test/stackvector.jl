@@ -104,3 +104,12 @@ end
         end
     end
 end
+
+@testset "Convert to bitvector" begin
+    for L in [1, 2, 3, 11, 64]
+        for i in 1:10
+            v = random_stackvector(L)
+            @test convert(BitVector, v) == BitVector(collect(v))
+        end
+    end
+end

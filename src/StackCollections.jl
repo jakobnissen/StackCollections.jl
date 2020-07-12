@@ -4,7 +4,10 @@ struct Unsafe end
 const unsafe = Unsafe()
 
 abstract type AbstractStackSet <: AbstractSet{Int} end
-Base.hasfastin(::Type{AbstractStackSet}) = true
+
+@static if VERSION >= v"1.4"
+    Base.hasfastin(::Type{AbstractStackSet}) = true
+end
 
 include("stackvector.jl")
 include("digitset.jl")

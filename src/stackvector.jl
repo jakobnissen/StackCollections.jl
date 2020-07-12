@@ -20,8 +20,7 @@ Base.length(s::StackVector{L}) where L = L
 
 function Base.hash(x::StackVector{L}, h::UInt) where L
     base = (0x93774c8a392b33bb % UInt) * L
-    h = hash(base, h)
-    return hash(x.x, h)
+    return hash(x.x, h ⊻ base)
 end
 
 StackVector{L}() where L = StackVector{L}(UInt(0), unsafe)

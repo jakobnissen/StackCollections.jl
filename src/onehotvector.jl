@@ -56,7 +56,7 @@ Base.count(::typeof(identity), v::OneHotVector) = 1
 Base.allunique(v::OneHotVector) = length(v) < 3
 
 for f in (:(Base.:+), :(Base.:-))
-    @eval function ($f)(v::OneHotVector, v1::Vector)
+    @eval function ($f)(v1::AbstractVector, v::OneHotVector)
         promote_shape(v, v1)
         c = copy(v1)
         @inbounds val = c[v.index]
@@ -64,7 +64,18 @@ for f in (:(Base.:+), :(Base.:-))
         @inbounds c[v.index] = val
         return c
     end
-    @eval $(f)(v1::Vector, v::OneHotVector) = $(f)(v, v1)
+end
+
+Base.:+(v::OneHotVector, v1::AbstractVector) = v1 + v
+
+function Base.:-(v::OneHotVector, v1::AbstractVector)
+    promote_shape(v, v1)
+    c = similar(v1)
+    @inbounds for i in eachindex(v1)
+        c[i] = -v1[i]
+    end
+    @inbounds c[v.index] += one(eltype(v1))
+    return c
 end
 
 Base.reverse(v::OneHotVector) = OneHotVector(length(v), length(v)-v.index+1, unsafe)

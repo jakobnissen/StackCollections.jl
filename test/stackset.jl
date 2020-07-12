@@ -1,12 +1,12 @@
 @testset "Construction" begin
     @test StackSet() == StackSet()
     @test StackSet([1, 3, 2]) == StackSet([1,2,3])
-    
+
     @test length(StackSet([101, 115, 151, 103, 115])) == 4
     @test length(StackSet([-50, -10, -1, -60, -5, -50])) == 5
     @test_throws ArgumentError StackSet([-10, 60])
     @test_throws ArgumentError StackSet([1001, 1070])
-    
+
     # Equality between when converting to Set
     @test Set(StackSet([501, 515, 540])) == Set(StackSet([540, 515, 501]))
 end
@@ -25,7 +25,7 @@ end
     v, st = iterate(s)
     @test v == 577
     @test iterate(s, st) === nothing
-    
+
     @test Set([i for i in StackSet([-30, 11, 0, 1])]) == Set([1, 0, 11, -30])
 end
 
@@ -78,7 +78,7 @@ end
     @test delete(StackSet(), 0) == StackSet()
     @test delete(StackSet([-9, 9]), 8) == StackSet([-9, 9])
     @test pop(StackSet([19, 8, 22]), 8) == StackSet([19, 22])
-    
+
     for v in vectors
         s = StackSet(v)
         s´ = Set(v)
@@ -104,15 +104,25 @@ end
     [(-101, -71), (-71, -105, -89)],
     [(0, 9, -5), (1, -10, 19)],
     ]
+
     for F in [union, intersect, symdiff, setdiff]
         for (v1, v2) in vs
-            if F(Set{Int}(v1), Set{Int}(v2)) != Set(F(StackSet(v1), StackSet(v2)))
-                println(F, " ", v1)
-            end
             @test F(Set{Int}(v1), Set{Int}(v2)) == Set(F(StackSet(v1), StackSet(v2)))
             @test F(Set{Int}(v2), Set{Int}(v1)) == Set(F(StackSet(v2), StackSet(v1)))
+
+            @test F(StackSet(v1), Set(v2)) == StackSet(F(Set(v1), Set(v2)))
+            @test F(StackSet(v2), Set(v1)) == StackSet(F(Set(v2), Set(v1)))
         end
     end
+    for (v1, v2) in vs
+        for F in [⊊, issubset]
+            @test F(Set{Int}(v1), Set{Int}(v2)) == F(StackSet(v1), StackSet(v2))
+            @test F(Set{Int}(v2), Set{Int}(v1)) == F(StackSet(v2), StackSet(v1))
+        end
+        @test allunique(StackSet(v1))
+        @test allunique(StackSet(v2))
+    end
+
     for (v1, v2) in vs
         @test issubset(Set{Int}(v1), Set{Int}(v2)) == issubset(StackSet(v1), StackSet(v2))
         @test issubset(Set{Int}(v2), Set{Int}(v1)) == issubset(StackSet(v2), StackSet(v1))
