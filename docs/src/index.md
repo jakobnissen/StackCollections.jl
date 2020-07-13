@@ -6,7 +6,7 @@ This package implements a few collection types that can be stored in one or a fe
 
 * `DigitSet`: A set of integers 0:63
 * `StackSet`: A set of integers N:N+63
-* `StackVector{L}`: A boolean vector with a length `L` of up to 64.
+* `StackVector`: A boolean vector with a length up to 64.
 * `OneHotVector`: A boolean vector with exactly one value `true`, rest `false`.
 
 The main features of the types are:
@@ -15,7 +15,7 @@ The main features of the types are:
 
 ```
 julia> a = StackVector([true, true, false, true]); reverse(a)
-4-element StackVector{4}:
+4-element StackVector:
  1
  0
  1
@@ -53,8 +53,8 @@ julia> code_native(f, (DigitSet, DigitSet), debuginfo=:none)
 Stack collections can be instantiated from an iterable, for example `StackVector([true, false, true])`, but this is not optimally efficient. Alternatively, they can be directly constructed using the unexported `StackCollections.unsafe` trait. But be careful: The trait is called `unsafe` for a reason - when constructed this way, there is no checking the inputs.
 
 ```
-julia> StackVector{3}(UInt(5), StackCollections.unsafe)
-3-element StackVector{3}:
+julia> StackVector(UInt(5), StackCollections.unsafe)
+3-element StackVector:
  1
  0
  1

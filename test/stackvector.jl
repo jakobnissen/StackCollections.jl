@@ -1,33 +1,30 @@
-random_stackvector(L) =  StackVector{L}(rand(UInt) & (1 << L - 1), StackCollections.unsafe)
+random_stackvector(L) =  StackVector(rand(UInt) & (1 << (L&63) - 1), L)
 
 @testset "Construction" begin
-    @test_throws TypeError StackVector{true}()
-    @test_throws DomainError StackVector{65}(UInt(0), StackCollections.unsafe)
+    @test_throws DomainError StackVector(zero(UInt), 65)
 
-    @test StackVector{6}([1, 0, 1, 1, 0, 1]) !== false
-    @test_throws DimensionMismatch StackVector{6}([1, 0, 1, 1, 0])
-    @test_throws DimensionMismatch StackVector{6}([1, 0, 1, 1, 0, 1, 1])
+    @test StackVector([1, 0, 1, 1, 0, 1]) !== false
 
-    @test StackVector([0, 1, 1, 0]) isa StackVector{4}
-    @test StackVector() === StackVector{0}()
+    @test StackVector([0, 1, 1, 0]) isa StackVector
+    @test StackVector() === StackVector()
     toolong = rand(Bool, 65)
-    @test_throws DimensionMismatch StackVector(toolong)
+    @test_throws DomainError StackVector(toolong)
 end
 
 @testset "Basic" begin
     v_ = [0, 1, 1, 0, 1, 1, 1, 0, 0, 1]
-    v = StackVector{10}(v_)
+    v = StackVector(v_)
     @test length(v) == 10
     @test size(v) == (10,)
 
     @test !isempty(v_)
-    @test isempty(StackVector{0}())
+    @test isempty(StackVector())
 end
 
 @testset "Get/set index" begin
     # Get index
     v_ = [0, 1, 1, 0, 1, 1, 1, 0, 0, 1]
-    v = StackVector{10}(v_)
+    v = StackVector(v_)
     @test !v[1]
     @test v[2]
     @test !v[4]
@@ -37,6 +34,23 @@ end
     v2 = setindex(v, true, 4)
     @test v2[4]
     @test length(v) == length(v2)
+end
+
+@testset "Push/pop" begin
+    v = StackVector()
+    @test_throws ArgumentError pop(v)
+    v = StackVector(fill(true, 64))
+    @test_throws DomainError push(v, true)
+
+    for L in [1, 3, 50, 63]
+        for i in 1:3
+            v = random_stackvector(L)
+            v´ = collect(v)
+            @test collect(pop(v)) == (v´´ = copy(v); pop!(v´´); v´´)
+            @test collect(push(v, true)) == push!(copy(v´), true)
+            @test collect(push(v, 0)) == push!(copy(v´), 0)
+        end
+    end
 end
 
 @testset "Iteration" begin
@@ -89,7 +103,7 @@ end
 
 @testset "Empty transformations" begin
     for f in [reverse, (x -> circshift(x, 3)), (x -> circshift(x, -301)), ~]
-        @test f(StackVector{0}()) === StackVector{0}()
+        @test f(StackVector()) === StackVector()
     end
 end
 

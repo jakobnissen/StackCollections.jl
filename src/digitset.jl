@@ -55,13 +55,13 @@ Base.length(x::DigitSet) = count_ones(x.x)
 
 Base.maximum(x::DigitSet, ::Unsafe) = Sys.WORD_SIZE - 1 - leading_zeros(x.x)
 function Base.maximum(x::DigitSet)
-    isempty(x) && throw(ArgumentError("collection must be non-empty"))
+    isempty(x) && throw_empty_err()
     return maximum(x, unsafe)
 end
 
 Base.minimum(x::DigitSet, ::Unsafe) = trailing_zeros(x.x)
 function Base.minimum(x::DigitSet)
-    isempty(x) && throw(ArgumentError("collection must be non-empty"))
+    isempty(x) && throw_empty_err()
     return minimum(x, unsafe)
 end
 
@@ -73,6 +73,7 @@ end
     push(collection, items...)
 
 Return a new collection containing all elements of `collection` and of `items`.
+If `collection` is ordered, add the new element to the end.
 
 # Examples
 

@@ -9,6 +9,8 @@ abstract type AbstractStackSet <: AbstractSet{Int} end
     Base.hasfastin(::Type{AbstractStackSet}) = true
 end
 
+@noinline throw_empty_err() = throw(ArgumentError("collection must be non-empty"))
+
 include("stackvector.jl")
 include("digitset.jl")
 include("stackset.jl")
