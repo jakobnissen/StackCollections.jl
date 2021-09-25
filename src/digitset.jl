@@ -43,11 +43,8 @@ Base.:(==)(x::T, y::T) where T<:AbstractStackSet = x === y
 Base.:⊊(x::AbstractStackSet, y::AbstractStackSet) = issubset(x, y) & (x != y)
 Base.allunique(x::AbstractStackSet) = true
 
-function Base.iterate(x::DigitSet, state::Int=0)
-    bits = x.x >>> unsigned(state)
-    iszero(bits) && return nothing
-    tz  = trailing_zeros(bits)
-    return (state + tz, state + tz + 1)
+function Base.iterate(x::DigitSet, state::UInt=x.x)
+	iszero(state) ? nothing : (trailing_zeros(state), state & (state - 1))
 end
 
 Base.in(x::Int, s::DigitSet) = isodd(s.x >>> unsigned(x))

@@ -60,7 +60,7 @@ end
                         "by more than $(Sys.WORD_SIZE-1)"))
 end
 
-function Base.iterate(s::StackSet, i::Int=0)
+function Base.iterate(s::StackSet, i::UInt=s.set.x)
     it = iterate(s.set, i)
     it === nothing && return nothing
     return it[1]+s.offset, it[2]
