@@ -23,7 +23,7 @@ julia> a = StackVector{4}([true, true, false, true]); reverse(a)
  1
  1
  ```
-* They are safe by default, and throws informative error messages if you attempt illegal or undefined operations.
+* They are safe by default, and throw informative error messages if you attempt illegal or undefined operations.
 ```
 julia> push(DigitSet(), 100)
 ERROR: ArgumentError: DigitSet can only contain 0:63
