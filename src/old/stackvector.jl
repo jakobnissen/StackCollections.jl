@@ -9,7 +9,7 @@ struct StackVector <: AbstractVector{Bool}
     len::Int
 
     function StackVector(x::UInt, len::Int, ::Unsafe)
-        new(x, len)
+        return new(x, len)
     end
 end
 
@@ -40,14 +40,14 @@ function StackVector(itr)
         len += 1
         len > Sys.WORD_SIZE && throw_stackvec_err()
         val = convert(UInt, convert(Bool, i))
-        bits |= (val << ((len-1) & 63))
+        bits |= (val << ((len - 1) & 63))
     end
     return StackVector(bits, len, unsafe)
 end
 
 function Base.getindex(s::StackVector, i::Int)
     @boundscheck checkbounds(s, i)
-    return isodd(s.x >>> unsigned(i-1))
+    return isodd(s.x >>> unsigned(i - 1))
 end
 
 """
@@ -71,12 +71,12 @@ julia> setindex(x, false, 1)
 """
 function setindex(s::StackVector, v::Bool, i::Int)
     @boundscheck checkbounds(s, i)
-    u = UInt(1) << ((i-1) & 63)
-    typeof(s)(ifelse(v, s.x | u, s.x & ~u), s.len, unsafe)
+    u = UInt(1) << ((i - 1) & 63)
+    return typeof(s)(ifelse(v, s.x | u, s.x & ~u), s.len, unsafe)
 end
 
 function push(s::StackVector, v::Bool, ::Unsafe)
-    return StackVector(s.x | UInt(v) << (length(s) & 63), length(s)+1, unsafe)
+    return StackVector(s.x | UInt(v) << (length(s) & 63), length(s) + 1, unsafe)
 end
 
 function push(s::StackVector, v)
@@ -91,9 +91,9 @@ end
 
 pop(s::StackVector) = isempty(s) ? throw_empty_err() : pop(s, unsafe)
 
-function Base.iterate(s::StackVector, i::Int=0)
-    i+1 > length(s) && return nothing
-    isodd(s.x >>> (i&63)), i+1
+function Base.iterate(s::StackVector, i::Int = 0)
+    i + 1 > length(s) && return nothing
+    return isodd(s.x >>> (i & 63)), i + 1
 end
 
 Base.in(v::Bool, s::StackVector) = !iszero(ifelse(v, s.x, s.x ⊻ mask(length(s))))
@@ -109,7 +109,7 @@ Base.sum(s::StackVector) = count_ones(s.x)
 function Base.convert(::Type{BitVector}, s::StackVector)
     b = BitVector(undef, length(s))
     !isempty(s) && @inbounds b.chunks[1] = s.x
-    b
+    return b
 end
 
 Base.:~(s::StackVector) = StackVector(s.x ⊻ mask(length(s)), s.len, unsafe)
@@ -139,18 +139,18 @@ end
 
 function Base.reverse(s::StackVector)
     x = s.x
-    x = ((x & 0xaaaaaaaaaaaaaaaa) >>> 1)  | ((x & 0x5555555555555555) << 1)
-    x = ((x & 0xcccccccccccccccc) >>> 2)  | ((x & 0x3333333333333333) << 2)
-    x = ((x & 0xf0f0f0f0f0f0f0f0) >>> 4)  | ((x & 0x0f0f0f0f0f0f0f0f) << 4)
+    x = ((x & 0xaaaaaaaaaaaaaaaa) >>> 1) | ((x & 0x5555555555555555) << 1)
+    x = ((x & 0xcccccccccccccccc) >>> 2) | ((x & 0x3333333333333333) << 2)
+    x = ((x & 0xf0f0f0f0f0f0f0f0) >>> 4) | ((x & 0x0f0f0f0f0f0f0f0f) << 4)
     x = bswap(x)
     x >>>= sizeof(UInt) << 3 - length(s)
-    typeof(s)(x, s.len, unsafe)
+    return typeof(s)(x, s.len, unsafe)
 end
 
 function Base.circshift(s::StackVector, k::Int)
     isempty(s) && return s
     shift = k % length(s)
-    left = ifelse(k < 0, length(s)+shift, shift) & 63
+    left = ifelse(k < 0, length(s) + shift, shift) & 63
     right = (length(s) - left) & 63
     bits = ((s.x << left) | (s.x >>> right)) & mask(length(s))
     return StackVector(bits, length(s), unsafe)

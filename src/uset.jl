@@ -17,6 +17,7 @@ end
 
 function USet{D}(s::USet{S}) where {D, S}
     sizeof(D) >= sizeof(S) && return new_uset(D, s.x % D)
+    iszero(s.x) && return new_uset(D, zero(D))
     largest = (8 * sizeof(S) - leading_zeros(s.x) - 1) % UInt32
     largest > maximum_member(USet{D}) && throw_uset_oob(USet{D}, largest)
     new_uset(D, s.x % D)
@@ -98,13 +99,13 @@ end
 
 Base.union(x::USet) = x
 
-function Base.union(x::T, y::T) where {U, T <: USet{U}}
+function Base.union(x::USet{U}, y::USet{U}) where {U <: Unsigned}
     new_uset(U, x.x | y.x)
 end
 
 # We leverage the constructor is efficient.
 # Note docs of union states `x` controls return type.
-function Base.union(x::USet{T1}, y::USet{T2}) where {T1, T2}
+function Base.union(x::USet{T1}, y::USet{T2}) where {T1 <: Unsigned, T2 <: Unsigned}
     union(x, USet{T1}(y))
 end
 
@@ -125,12 +126,12 @@ end
 
 Base.intersect(x::USet) = x
 
-function Base.intersect(x::T, y::T) where {U, T <: USet{U}}
+function Base.intersect(x::USet{U}, y::USet{U}) where {U <: Unsigned}
     new_uset(U, x.x & y.x)
 end
 
 # Note docs of intersect says first arg controls return type
-function Base.intersect(x::USet{T1}, y::USet{T2}) where {T1, T2}
+function Base.intersect(x::USet{T1}, y::USet{T2}) where {T1 <: Unsigned, T2 <: Unsigned}
     # Here, we only need to consider the part of y which fits into
     # x; any extra bits are simply ignored
     intersect(x, new_uset(T1, y.x % T1))
@@ -150,18 +151,19 @@ end
 function Base.intersect(x::USet, s1, s2, sets...)
     for set in (s1, s2, sets...)
         x = intersect(x, set)
+        isempty(x) && return x
     end
     return x
 end
 
 Base.setdiff(x::USet) = x
 
-function Base.setdiff(x::T, y::T) where {U, T <: USet{U}}
+function Base.setdiff(x::USet{U}, y::USet{U}) where {U <: Unsigned}
     new_uset(U, x.x & ~y.x)
 end
 
 # Note setdiff docs says output must be same as first arg
-function Base.setdiff(x::USet{T1}, y::USet{T2}) where {T1, T2}
+function Base.setdiff(x::USet{T1}, y::USet{T2}) where {T1 <: Unsigned, T2 <: Unsigned}
     # Same optimization as intersect
     setdiff(x, new_uset(T1, y.x % T1))
 end
@@ -170,6 +172,9 @@ function Base.setdiff(x::USet, set)
     y = typeof(x)()
     for i in set
         y = push_if_inbounds(y, i)
+        # Short circuit - if the setdiff is already empty,
+        # no need to continue getting elements
+        y === x && break
     end
     setdiff(x, y)
 end
@@ -182,15 +187,15 @@ function Base.setdiff(x::USet, s1, s2, sets...)
     return x
 end
 
-symdiff(x::USet) = x
+Base.symdiff(x::USet) = x
 
-function Base.symdiff(x::T, y::T) where {U, T <: USet{U}}
+function Base.symdiff(x::USet{U}, y::USet{U}) where {U <: Unsigned}
     new_uset(U, xor(x.x, y.x))
 end
 
 # Docs do not say which type should be returned, but the other set ops
 # specify it should be the same as the first arg, so I also follow that here
-function Base.symdiff(x::USet{T1}, y::USet{T2}) where {T1, T2}
+function Base.symdiff(x::USet{T1}, y::USet{T2}) where {T1 <: Unsigned, T2 <: Unsigned}
     symdiff(x, USet{T1}(y))
 end
 
@@ -205,4 +210,38 @@ function Base.symdiff(x::USet, s1, s2, sets...)
     return x
 end
 
-# Symdiff
+Base.issorted(::USet) = true
+
+function Base.first(x::USet)
+    @boundscheck isempty(x) && throw(ArgumentError("USet must be nonempty"))
+    trailing_zeros(x.x) % UInt32
+end
+
+function Base.last(x::USet)
+    @boundscheck isempty(x) && throw(ArgumentError("USet must be nonempty"))
+    return (8 * sizeof(x.x) - leading_zeros(x.x) - 1) % UInt32
+end
+
+Base.minimum(x::USet) = first(x)
+Base.maximum(x::USet) = last(x)
+
+function Base.extrema(x::USet)
+    @boundscheck isempty(x) && throw(ArgumentError("USet must be nonempty"))
+    return (@inbounds(first(x)), @inbounds(last(x)))
+end
+
+function Base.filter(pred, x::USet)
+    y = typeof(x)()
+    for i in x
+        if pred(i)
+            y = push(i)
+        end
+    end
+    y
+end
+
+# Here, exploit the fact that setdiff short circuits
+Base.issubset(a::USet, b) = isempty(setdiff(a, b))
+
+# The generic isdisjoint is optimial when b is generic
+Base.isdisjoint(a::USet, b::USet) = isempty(intersect(a, b))

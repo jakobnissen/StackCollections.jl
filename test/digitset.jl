@@ -85,7 +85,7 @@ end
 end
 
 @testset "Filter" begin
-    vs = [[], [0, 21], [11, 5, 11, 2], [6,7,8,9,0,42]]
+    vs = [[], [0, 21], [11, 5, 11, 2], [6, 7, 8, 9, 0, 42]]
     for F in [isodd, x -> true, x -> false, isequal(11)]
         for v in vs
             @test DigitSet(filter(F, Set(v))) == filter(F, DigitSet(v))
@@ -94,7 +94,7 @@ end
 end
 
 @testset "Pop & Delete" begin
-    for v in [[], [0, 21], [11, 5, 11, 2], [6,7,8,9,0,42]]
+    for v in [[], [0, 21], [11, 5, 11, 2], [6, 7, 8, 9, 0, 42]]
         s´ = Set(v)
         s = DigitSet(v)
 
@@ -116,7 +116,7 @@ end
 @testset "Isdisjoint" begin
     @test isdisjoint(DigitSet(), DigitSet())
 
-    s = DigitSet([1,5,6])
+    s = DigitSet([1, 5, 6])
     @test !isdisjoint(s, s)
     @test !isdisjoint(s, push(s, 9))
 
@@ -124,10 +124,11 @@ end
 end
 
 @testset "Misc methods" begin
-    vs = [[(4, 1), ()],
-    [(0, 11), (11, 12)],
-    [(7, 9, 51, 7), (51, 9, 9, 9, 9)],
-    [(5, 3, 1, 9), (3, 5, 1, 9, 9, 38, 41)],
+    vs = [
+        [(4, 1), ()],
+        [(0, 11), (11, 12)],
+        [(7, 9, 51, 7), (51, 9, 9, 9, 9)],
+        [(5, 3, 1, 9), (3, 5, 1, 9, 9, 38, 41)],
     ]
     for F in [union, intersect, symdiff, setdiff]
         for (v1, v2) in vs
@@ -147,9 +148,9 @@ end
         @test allunique(DigitSet(v2))
     end
 
-    @test_throws ArgumentError union(DigitSet([1,2]), [-3, 1])
+    @test_throws ArgumentError union(DigitSet([1, 2]), [-3, 1])
     @test_throws ArgumentError union(DigitSet([55, 51]), [1, 3], [66, 2])
-    @test_throws ArgumentError symdiff(DigitSet([1,2]), [61, 99])
+    @test_throws ArgumentError symdiff(DigitSet([1, 2]), [61, 99])
     @test_throws ArgumentError symdiff(DigitSet([55, 51]), [1, 3], [55, -1])
 
     @test intersect(DigitSet([3, 9, 11, 22]), [66, -2, 9, 3], [9]) == DigitSet([9])
@@ -160,6 +161,6 @@ end
 
     @test !(DigitSet([1, 2]) ⊊ DigitSet([1, 2]))
     @test !(DigitSet([]) ⊊ DigitSet([]))
-    @test (DigitSet([5,3,1]) ⊊ DigitSet([5,3,2,1]))
-    @test !(DigitSet([9,3,1]) ⊊ DigitSet([1,3]))
+    @test (DigitSet([5, 3, 1]) ⊊ DigitSet([5, 3, 2, 1]))
+    @test !(DigitSet([9, 3, 1]) ⊊ DigitSet([1, 3]))
 end

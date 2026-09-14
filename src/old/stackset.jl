@@ -22,7 +22,7 @@ function StackSet(set::DigitSet)
 end
 
 function DigitSet(set::StackSet)
-    if (minimum(set, unsafe) < 0) | (maximum(set, unsafe) > (Sys.WORD_SIZE-1))
+    if (minimum(set, unsafe) < 0) | (maximum(set, unsafe) > (Sys.WORD_SIZE - 1))
         throw_DigitSet_digit_err()
     end
     return DigitSet(set.set.x << (set.offset & 63))
@@ -52,18 +52,22 @@ function StackSet(itr)
     for i in itr
         d = push(d, convert(Int, i))
     end
-    d
+    return d
 end
 
 @noinline function throw_StackSet_range_err()
-    throw(ArgumentError("DigitSet can not contain values differing " *
-                        "by more than $(Sys.WORD_SIZE-1)"))
+    throw(
+        ArgumentError(
+            "DigitSet can not contain values differing " *
+                "by more than $(Sys.WORD_SIZE - 1)"
+        )
+    )
 end
 
-function Base.iterate(s::StackSet, i::UInt=s.set.x)
+function Base.iterate(s::StackSet, i::UInt = s.set.x)
     it = iterate(s.set, i)
     it === nothing && return nothing
-    return it[1]+s.offset, it[2]
+    return it[1] + s.offset, it[2]
 end
 
 function new_offset(s::StackSet, x::Int)
@@ -75,14 +79,14 @@ end
 
 function push(s::StackSet, x::Int, ::Unsafe)
     newoffset, lshift = new_offset(s, x)
-    newset = push(DigitSet(s.set.x << (lshift & 63)), x-newoffset, unsafe)
+    newset = push(DigitSet(s.set.x << (lshift & 63)), x - newoffset, unsafe)
     return StackSet(newset, newoffset, unsafe)
 end
 
 function push(s::StackSet, x::Int)
     newoffset, lshift = new_offset(s, x)
     !isempty(s) & (leading_zeros(s.set.x) < lshift) && throw_StackSet_range_err()
-    newset = push(DigitSet(s.set.x << (lshift & 63)), x-newoffset)
+    newset = push(DigitSet(s.set.x << (lshift & 63)), x - newoffset)
     return StackSet(newset, newoffset, unsafe)
 end
 
@@ -90,27 +94,27 @@ Base.maximum(x::StackSet, ::Unsafe) = maximum(x.set, unsafe) + x.offset
 Base.maximum(x::StackSet) = maximum(x.set) + x.offset
 Base.minimum(x::StackSet, ::Unsafe) = minimum(x.set, unsafe) + x.offset
 Base.minimum(x::StackSet) = minimum(x.set) + x.offset
-Base.in(x::Int, s::StackSet) = in(x-s.offset, s.set)
+Base.in(x::Int, s::StackSet) = in(x - s.offset, s.set)
 
 function Base.filter(pred, s::StackSet)
     r = DigitSet()
     for i in s.set
-        pred(i+s.offset) && (r = push(r, i, unsafe))
+        pred(i + s.offset) && (r = push(r, i, unsafe))
     end
-    normalized(StackSet(r, s.offset, unsafe))
+    return normalized(StackSet(r, s.offset, unsafe))
 end
 
-delete(s::StackSet, v::Int) = StackSet(delete(s.set, v-s.offset), s.offset)
+delete(s::StackSet, v::Int) = StackSet(delete(s.set, v - s.offset), s.offset)
 pop(s::StackSet, v::Int) = in(v, s) ? delete(s, v) : throw(KeyError(v))
 
 function Base.intersect(x::StackSet, y::StackSet)
     new_x_set = trunc_offset_stackset(x, y)
-    normalized(StackSet(intersect(new_x_set, y.set), y.offset, unsafe))
+    return normalized(StackSet(intersect(new_x_set, y.set), y.offset, unsafe))
 end
 
 function Base.setdiff(x::StackSet, y::StackSet)
     new_y_set = trunc_offset_stackset(y, x)
-    normalized(StackSet(setdiff(x.set, new_y_set), x.offset, unsafe))
+    return normalized(StackSet(setdiff(x.set, new_y_set), x.offset, unsafe))
 end
 
 # This shifts the from bits to match the to bits, truncating if necessary

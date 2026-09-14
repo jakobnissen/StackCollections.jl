@@ -2,19 +2,19 @@ using StackCollections
 using Test
 
 @testset "DigitSet" begin
-include("digitset.jl")
+    include("digitset.jl")
 end
 
 @testset "StackSet" begin
-include("stackset.jl")
+    include("stackset.jl")
 end
 
 @testset "StackVector" begin
-include("stackvector.jl")
+    include("stackvector.jl")
 end
 
 @testset "OneHotVector" begin
-include("onehotvector.jl")
+    include("onehotvector.jl")
 end
 
 @testset "Cross-type" begin

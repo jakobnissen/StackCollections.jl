@@ -78,7 +78,7 @@ function Base.:-(v::OneHotVector, v1::AbstractVector)
     return c
 end
 
-Base.reverse(v::OneHotVector) = OneHotVector(length(v), length(v)-v.index+1, unsafe)
+Base.reverse(v::OneHotVector) = OneHotVector(length(v), length(v) - v.index + 1, unsafe)
 
 function Base.findfirst(f::Function, v::OneHotVector)
     ft::Bool = f(true)
@@ -86,7 +86,7 @@ function Base.findfirst(f::Function, v::OneHotVector)
     ft & ff && return 1
     !(ft | ff) && return nothing
     ft && return v.index
-    ff && return ifelse(length(v) == 1, nothing, 1 + (v.index == 1))
+    return ff && return ifelse(length(v) == 1, nothing, 1 + (v.index == 1))
 end
 
 function Base.circshift(v::OneHotVector, s::Integer)

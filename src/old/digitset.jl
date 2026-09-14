@@ -19,7 +19,7 @@ function DigitSet(itr)
     for i in itr
         d = push(d, convert(Int, i))
     end
-    d
+    return d
 end
 
 function Base.hash(x::DigitSet, h::UInt)
@@ -28,23 +28,23 @@ function Base.hash(x::DigitSet, h::UInt)
 end
 
 @noinline function throw_DigitSet_digit_err()
-    throw(ArgumentError("DigitSet can only contain 0:$(Sys.WORD_SIZE-1)"))
+    throw(ArgumentError("DigitSet can only contain 0:$(Sys.WORD_SIZE - 1)"))
 end
 
 function show(io::IO, s::AbstractStackSet)
     print(io, "$(typeof(s))(")
     Base.show_vector(io, s)
-    print(io, ')')
+    return print(io, ')')
 end
 
 Base.empty(x::DigitSet) = DigitSet()
 Base.isempty(x::DigitSet) = iszero(x.x)
-Base.:(==)(x::T, y::T) where T<:AbstractStackSet = x === y
+Base.:(==)(x::T, y::T) where {T <: AbstractStackSet} = x === y
 Base.:⊊(x::AbstractStackSet, y::AbstractStackSet) = issubset(x, y) & (x != y)
 Base.allunique(x::AbstractStackSet) = true
 
-function Base.iterate(x::DigitSet, state::UInt=x.x)
-	iszero(state) ? nothing : (trailing_zeros(state), state & (state - 1))
+function Base.iterate(x::DigitSet, state::UInt = x.x)
+    return iszero(state) ? nothing : (trailing_zeros(state), state & (state - 1))
 end
 
 Base.in(x::Int, s::DigitSet) = isodd(s.x >>> unsigned(x))
@@ -63,7 +63,7 @@ function Base.minimum(x::DigitSet)
 end
 
 function push(s::DigitSet, v::Int, ::Unsafe)
-    DigitSet(s.x | (1 << (unsigned(v) & (Sys.WORD_SIZE - 1))))
+    return DigitSet(s.x | (1 << (unsigned(v) & (Sys.WORD_SIZE - 1))))
 end
 
 """
@@ -88,14 +88,14 @@ DigitSet with 4 elements:
 function push end
 
 function push(s::DigitSet, v::Int)
-    unsigned(v) ≥ Sys.WORD_SIZE ? throw_DigitSet_digit_err() : push(s, v, unsafe)
+    return unsigned(v) ≥ Sys.WORD_SIZE ? throw_DigitSet_digit_err() : push(s, v, unsafe)
 end
 
 function push(s::DigitSet, vs...)
     for v in vs
         s = push(s, convert(Int, v))
     end
-    s
+    return s
 end
 
 function Base.filter(pred, x::DigitSet)
@@ -103,7 +103,7 @@ function Base.filter(pred, x::DigitSet)
     for i in x
         pred(i) && (r = push(r, i, unsafe))
     end
-    r
+    return r
 end
 
 """
@@ -151,7 +151,7 @@ function delete end
 delete(s::DigitSet, v::Int) = ifelse((v < 0) | (v ≥ Sys.WORD_SIZE), s, delete(s, v, unsafe))
 function delete(s::DigitSet, v::Int, ::Unsafe)
     mask = ~(UInt(1) << (unsigned(v) & (Sys.WORD_SIZE - 1)))
-    DigitSet(s.x & mask)
+    return DigitSet(s.x & mask)
 end
 
 Base.issubset(x::AbstractStackSet, y::AbstractStackSet) = isempty(setdiff(x, y))
@@ -187,7 +187,7 @@ Base.setdiff(x::DigitSet, y::DigitSet) = DigitSet(x.x & ~y.x)
 for (func, op) in ((:union, :|), (:symdiff, :⊻), (:intersect, :&))
     @eval begin
         function Base.$(func)(x::DigitSet, y::DigitSet)
-            DigitSet($op(x.x, y.x))
+            return DigitSet($op(x.x, y.x))
         end
     end
 end

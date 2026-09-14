@@ -1,6 +1,6 @@
 @testset "Construction" begin
     @test StackSet() == StackSet()
-    @test StackSet([1, 3, 2]) == StackSet([1,2,3])
+    @test StackSet([1, 3, 2]) == StackSet([1, 2, 3])
 
     @test length(StackSet([101, 115, 151, 103, 115])) == 4
     @test length(StackSet([-50, -10, -1, -60, -5, -50])) == 5
@@ -30,11 +30,11 @@ end
 end
 
 const vectors = [
-[0],
-[-5, 6],
-[-401, -350, -401],
-collect(-4:50),
-[503913, 503889, 503936],
+    [0],
+    [-5, 6],
+    [-401, -350, -401],
+    collect(-4:50),
+    [503913, 503889, 503936],
 ]
 
 @testset "Misc" begin
@@ -98,12 +98,13 @@ end
 end
 
 @testset "Misc methods" begin
-    vs = [[(4, 1), ()],
-    [(0, 11), (11, 12)],
-    [(7, 9, 51, 7), (51, 9, 9, 9, 9)],
-    [(5, 3, 1, 9), (3, 5, 1, 9, 9, 38, 41)],
-    [(-101, -71), (-71, -105, -89)],
-    [(0, 9, -5), (1, -10, 19)],
+    vs = [
+        [(4, 1), ()],
+        [(0, 11), (11, 12)],
+        [(7, 9, 51, 7), (51, 9, 9, 9, 9)],
+        [(5, 3, 1, 9), (3, 5, 1, 9, 9, 38, 41)],
+        [(-101, -71), (-71, -105, -89)],
+        [(0, 9, -5), (1, -10, 19)],
     ]
 
     for F in [union, intersect, symdiff, setdiff]
@@ -147,6 +148,6 @@ end
         @test collect(s) == collect(s2) == collect(d2)
     end
 
-    @test DigitSet([1,2,39]) != StackSet([1, 2, 40])
-    @test DigitSet([0,1,2]) != StackSet([5,6,7])
+    @test DigitSet([1, 2, 39]) != StackSet([1, 2, 40])
+    @test DigitSet([0, 1, 2]) != StackSet([5, 6, 7])
 end

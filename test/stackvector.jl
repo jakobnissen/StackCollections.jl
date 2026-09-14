@@ -1,4 +1,4 @@
-random_stackvector(L) =  StackVector(rand(UInt) & (1 << (L&63) - 1), L)
+random_stackvector(L) = StackVector(rand(UInt) & (1 << (L & 63) - 1), L)
 
 @testset "Construction" begin
     @test_throws DomainError StackVector(zero(UInt), 65)
@@ -87,8 +87,10 @@ end
 end
 
 @testset "Min/max" begin
-    for F in [argmin, argmax, minimum, maximum, findfirst,
-             x -> findfirst(~, x), x -> findfirst(y -> true, x)]
+    for F in [
+            argmin, argmax, minimum, maximum, findfirst,
+            x -> findfirst(~, x), x -> findfirst(y -> true, x),
+        ]
         if F in [argmin, argmax, minimum, maximum]
             @test_throws ArgumentError F(StackVector())
         end
@@ -108,8 +110,10 @@ end
 end
 
 @testset "Transformations" begin
-    for F in [reverse, x -> circshift(x, 0), x -> circshift(x, -3),
-             x -> circshift(x, -102), x -> circshift(x, 69), x -> circshift(x, 4)]
+    for F in [
+            reverse, x -> circshift(x, 0), x -> circshift(x, -3),
+            x -> circshift(x, -102), x -> circshift(x, 69), x -> circshift(x, 4),
+        ]
         for L in [1, 3, 10]
             for i in 1:3
                 v = random_stackvector(L)

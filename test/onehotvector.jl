@@ -34,10 +34,10 @@ end
         for i in 1:3
             v1 = OneHotVector(len, rand(1:len))
             v2 = rand(-10:10, len)
-            @test v1 + v2 == [(i+j) for (i,j) in zip(v1, v2)]
-            @test v1 - v2 == [(i-j) for (i,j) in zip(v1, v2)]
-            @test v2 + v1 == [(i+j) for (i,j) in zip(v2, v1)]
-            @test v2 - v1 == [(i-j) for (i,j) in zip(v2, v1)]
+            @test v1 + v2 == [(i + j) for (i, j) in zip(v1, v2)]
+            @test v1 - v2 == [(i - j) for (i, j) in zip(v1, v2)]
+            @test v2 + v1 == [(i + j) for (i, j) in zip(v2, v1)]
+            @test v2 - v1 == [(i - j) for (i, j) in zip(v2, v1)]
         end
     end
 end
@@ -51,15 +51,19 @@ end
             @test v[:] === v
             @test count(identity, v) == count(v) == 1
 
-            for F in [argmax, argmin, sum, count, allunique,
-                      x -> findfirst(isodd, x), x -> findfirst(isequal(4), x),
-                      x -> findfirst(y -> false, x), x -> findfirst(~, x)]
+            for F in [
+                    argmax, argmin, sum, count, allunique,
+                    x -> findfirst(isodd, x), x -> findfirst(isequal(4), x),
+                    x -> findfirst(y -> false, x), x -> findfirst(~, x),
+                ]
                 @test F(v) == F(v´)
             end
 
-            for F in [reverse, x -> circshift(x, 1), x -> circshift(x, -5),
-                      x -> circshift(x, 500), x -> filter(iseven, x),
-                      x -> filter(y -> true, x), x -> filter(isequal(3), x)]
+            for F in [
+                    reverse, x -> circshift(x, 1), x -> circshift(x, -5),
+                    x -> circshift(x, 500), x -> filter(iseven, x),
+                    x -> filter(y -> true, x), x -> filter(isequal(3), x),
+                ]
                 @test collect(F(v)) == F(v´)
             end
         end
