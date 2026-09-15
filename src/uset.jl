@@ -40,6 +40,7 @@ can_contain(::Type{T}, i::Integer) where {T <: USet} = 0 <= i <= maximum_member(
 can_contain(::T, i::Integer) where {T <: USet} = can_contain(T, i)
 
 
+Base.empty(::USet{U}) where {U} = USet{U}()
 Base.length(x::USet) = count_ones(x.x)
 Base.isempty(x::USet) = iszero(x.x)
 
@@ -55,16 +56,15 @@ function Base.in(i::Integer, x::USet)
     return isodd(right_shift(x.x, i % UInt32))
 end
 
-# TODO: Kind of sketchty to use a boundscheck for this use case
-checkbounds(::Type{Bool}, x::USet, i::Integer) = can_contain(x, i)
+Base.checkbounds(::Type{Bool}, x::USet, i::Integer) = can_contain(x, i)
 
-function checkbounds(x::USet, i::Integer)
-    return checkbounds(Bool, x, i) || throw(BoundsError(x, i))
+function Base.checkbounds(x::USet, i::Integer)
+    return Base.checkbounds(Bool, x, i) || throw(BoundsError(x, i))
 end
 
 # TODO: Propagate inbounds here? For the vararg method
 function push(x::USet{U}, i::Integer) where {U}
-    @boundscheck checkbounds(x, i)
+    @boundscheck Base.checkbounds(x, i)
     return push_inbounds(x, i % UInt32)
 end
 
@@ -234,14 +234,15 @@ function Base.filter(pred, x::USet)
     y = typeof(x)()
     for i in x
         if pred(i)
-            y = push(i)
+            y = push(y, i)
         end
     end
     return y
 end
 
-# Here, exploit the fact that setdiff short circuits
-Base.issubset(a::USet, b) = isempty(setdiff(a, b))
+# Exploit the bitwise setdiff when both operands are USets. The Base fallback
+# handles other collection types.
+Base.issubset(a::USet, b::USet) = isempty(setdiff(a, b))
 
 # The generic isdisjoint is optimial when b is generic
 Base.isdisjoint(a::USet, b::USet) = isempty(intersect(a, b))

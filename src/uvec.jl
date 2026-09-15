@@ -56,10 +56,12 @@ function inbounds_shift(::Type{T}, i::Int) where {T <: UVec}
 end
 
 function Base.getindex(x::UVec, i::Integer)
-    checkbounds(x, i)
+    @boundscheck Base.checkbounds(x, i)
     i = (i % Int)::Int
     return isodd(right_shift(x.x, inbounds_shift(typeof(x), i)))
 end
+
+Base.getindex(::UVec, i::Bool) = Base.to_index(i)
 
 function push(x::T, i) where {U <: Unsigned, T <: UVec{U}}
     b = convert(Bool, i)::Bool
@@ -105,13 +107,15 @@ end
 
 function Base.setindex(x::UVec{U}, v, i::Integer) where {U}
     vT = convert(Bool, v)::Bool
-    checkbounds_lightboundserror(x, i)
-    i = i % Int
+    @boundscheck Base.checkbounds(x, i)
+    i = (i % Int)::Int
     shift = inbounds_shift(typeof(x), i)
     u = x.x & ~left_shift(one(U), shift)
     u |= left_shift(vT % U, shift)
     return new_uvec(u)
 end
+
+Base.setindex(::UVec, v, i::Bool) = Base.to_index(i)
 
 function Base.circshift(x::UVec{U}, i::Integer) where {U <: Unsigned}
     L = length(x) % UInt
