@@ -1,7 +1,7 @@
 name = "StackCollections"
 uuid = "501fa84d-4592-420e-a352-d1184606d913"
-authors = ["Jakob Nybo Nissen <jakobnybonissen@gmail.com>"]
 version = "0.1.0"
+authors = ["Jakob Nybo Andersen <jnandersen@proton.me>"]
 
 [compat]
 julia = "1"

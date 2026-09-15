@@ -6,11 +6,11 @@ struct USet{U <: Unsigned} <: AbstractSet{UInt32}
     # a set with the single element 0x05, so we need to suppress default
     # constructor
     global function new_uset(::Type{U}, x::U) where {U <: Unsigned}
-        new{U}(x)
+        return new{U}(x)
     end
 end
 
-@noinline function throw_uset_oob(::Type{T}, i::Integer) where T
+@noinline function throw_uset_oob(::Type{T}, i::Integer) where {T}
     m = maximum_member(T)
     throw(ArgumentError("Too large value for $(T): Supports up to $(m), got $(i)"))
 end
@@ -20,21 +20,21 @@ function USet{D}(s::USet{S}) where {D, S}
     iszero(s.x) && return new_uset(D, zero(D))
     largest = (8 * sizeof(S) - leading_zeros(s.x) - 1) % UInt32
     largest > maximum_member(USet{D}) && throw_uset_oob(USet{D}, largest)
-    new_uset(D, s.x % D)
+    return new_uset(D, s.x % D)
 end
 
-USet{U}() where U = new_uset(U, zero(U))
+USet{U}() where {U} = new_uset(U, zero(U))
 
 # Generic constructor
-function USet{U}(itr) where U
+function USet{U}(itr) where {U}
     x = USet{U}()
     for i in itr
         x = push(x, i)
     end
-    x
+    return x
 end
 
-maximum_member(::Type{USet{U}}) where U = (8 * sizeof(U) - 1) % UInt32
+maximum_member(::Type{USet{U}}) where {U} = (8 * sizeof(U) - 1) % UInt32
 
 can_contain(::Type{T}, i::Integer) where {T <: USet} = 0 <= i <= maximum_member(T)
 can_contain(::T, i::Integer) where {T <: USet} = can_contain(T, i)
@@ -43,11 +43,11 @@ can_contain(::T, i::Integer) where {T <: USet} = can_contain(T, i)
 Base.length(x::USet) = count_ones(x.x)
 Base.isempty(x::USet) = iszero(x.x)
 
-function Base.iterate(x::USet{U}, state::U=x.x) where U
+function Base.iterate(x::USet{U}, state::U = x.x) where {U}
     iszero(state) && return nothing
     tz = trailing_zeros(state)
     # Bithack to clear lowest set bit
-    (tz % UInt32, state & (state - one(state)))
+    return (tz % UInt32, state & (state - one(state)))
 end
 
 function Base.in(i::Integer, x::USet)
@@ -59,36 +59,36 @@ end
 checkbounds(::Type{Bool}, x::USet, i::Integer) = can_contain(x, i)
 
 function checkbounds(x::USet, i::Integer)
-    checkbounds(Bool, x, i) || throw(BoundsError(x, i))
-end 
+    return checkbounds(Bool, x, i) || throw(BoundsError(x, i))
+end
 
 # TODO: Propagate inbounds here? For the vararg method
-function push(x::USet{U}, i::Integer) where U
+function push(x::USet{U}, i::Integer) where {U}
     @boundscheck checkbounds(x, i)
-    push_inbounds(x, i % UInt32)
+    return push_inbounds(x, i % UInt32)
 end
 
-function push_inbounds(x::USet{U}, i::UInt32) where U
+function push_inbounds(x::USet{U}, i::UInt32) where {U}
     u = x.x
     u |= left_shift(one(u), i % UInt32)
-    new_uset(U, u)
+    return new_uset(U, u)
 end
 
-function push_if_inbounds(x::USet{U}, i::Integer) where U
+function push_if_inbounds(x::USet{U}, i::Integer) where {U}
     can_contain(x, i) || return x
-    push_inbounds(x, i % UInt32)
+    return push_inbounds(x, i % UInt32)
 end
 
 # This method should be used with at least 3 args, so we need both a and b,
 # since xs may be empty
-function push(x::USet{U}, a::Integer, b::Integer, xs::Vararg{Integer}) where U
+function push(x::USet{U}, a::Integer, b::Integer, xs::Vararg{Integer}) where {U}
     for i in (a, b, xs...)
         x = push(x, i)
     end
-    x
+    return x
 end
 
-function pop(x::USet{U}) where U
+function pop(x::USet{U}) where {U}
     # TODO: Again, boundscheck is too sketchy for this
     @boundscheck(isempty(x) && throw(BoundsError(x, 0)))
     u = x.x
@@ -100,13 +100,13 @@ end
 Base.union(x::USet) = x
 
 function Base.union(x::USet{U}, y::USet{U}) where {U <: Unsigned}
-    new_uset(U, x.x | y.x)
+    return new_uset(U, x.x | y.x)
 end
 
 # We leverage the constructor is efficient.
 # Note docs of union states `x` controls return type.
 function Base.union(x::USet{T1}, y::USet{T2}) where {T1 <: Unsigned, T2 <: Unsigned}
-    union(x, USet{T1}(y))
+    return union(x, USet{T1}(y))
 end
 
 Base.union(x::USet, set) = union(x, typeof(x)(set))
@@ -118,23 +118,23 @@ function Base.union(x::USet, s1, s2, sets...)
     return x
 end
 
-function delete(x::USet{U}, i::Integer) where U
+function delete(x::USet{U}, i::Integer) where {U}
     can_contain(x, i) || return x
     mask = ~left_shift(one(U), i % UInt32)
-    new_uset(U, x.x & mask)
+    return new_uset(U, x.x & mask)
 end
 
 Base.intersect(x::USet) = x
 
 function Base.intersect(x::USet{U}, y::USet{U}) where {U <: Unsigned}
-    new_uset(U, x.x & y.x)
+    return new_uset(U, x.x & y.x)
 end
 
 # Note docs of intersect says first arg controls return type
 function Base.intersect(x::USet{T1}, y::USet{T2}) where {T1 <: Unsigned, T2 <: Unsigned}
     # Here, we only need to consider the part of y which fits into
     # x; any extra bits are simply ignored
-    intersect(x, new_uset(T1, y.x % T1))
+    return intersect(x, new_uset(T1, y.x % T1))
 end
 
 function Base.intersect(x::USet, set)
@@ -145,7 +145,7 @@ function Base.intersect(x::USet, set)
     for i in set
         y = push_if_inbounds(y, i)
     end
-    intersect(x, y)
+    return intersect(x, y)
 end
 
 function Base.intersect(x::USet, s1, s2, sets...)
@@ -159,13 +159,13 @@ end
 Base.setdiff(x::USet) = x
 
 function Base.setdiff(x::USet{U}, y::USet{U}) where {U <: Unsigned}
-    new_uset(U, x.x & ~y.x)
+    return new_uset(U, x.x & ~y.x)
 end
 
 # Note setdiff docs says output must be same as first arg
 function Base.setdiff(x::USet{T1}, y::USet{T2}) where {T1 <: Unsigned, T2 <: Unsigned}
     # Same optimization as intersect
-    setdiff(x, new_uset(T1, y.x % T1))
+    return setdiff(x, new_uset(T1, y.x % T1))
 end
 
 function Base.setdiff(x::USet, set)
@@ -176,7 +176,7 @@ function Base.setdiff(x::USet, set)
         # no need to continue getting elements
         y === x && break
     end
-    setdiff(x, y)
+    return setdiff(x, y)
 end
 
 function Base.setdiff(x::USet, s1, s2, sets...)
@@ -190,17 +190,17 @@ end
 Base.symdiff(x::USet) = x
 
 function Base.symdiff(x::USet{U}, y::USet{U}) where {U <: Unsigned}
-    new_uset(U, xor(x.x, y.x))
+    return new_uset(U, xor(x.x, y.x))
 end
 
 # Docs do not say which type should be returned, but the other set ops
 # specify it should be the same as the first arg, so I also follow that here
 function Base.symdiff(x::USet{T1}, y::USet{T2}) where {T1 <: Unsigned, T2 <: Unsigned}
-    symdiff(x, USet{T1}(y))
+    return symdiff(x, USet{T1}(y))
 end
 
 function Base.symdiff(x::USet, set)
-    symdiff(x, typeof(x)(set))
+    return symdiff(x, typeof(x)(set))
 end
 
 function Base.symdiff(x::USet, s1, s2, sets...)
@@ -214,7 +214,7 @@ Base.issorted(::USet) = true
 
 function Base.first(x::USet)
     @boundscheck isempty(x) && throw(ArgumentError("USet must be nonempty"))
-    trailing_zeros(x.x) % UInt32
+    return trailing_zeros(x.x) % UInt32
 end
 
 function Base.last(x::USet)
@@ -237,7 +237,7 @@ function Base.filter(pred, x::USet)
             y = push(i)
         end
     end
-    y
+    return y
 end
 
 # Here, exploit the fact that setdiff short circuits
