@@ -5,3 +5,7 @@ using StackCollections: USet, UVec, pop, push, popfirst, pushfirst, append, dele
 @testset "USet" begin
     include("uset.jl")
 end
+
+@testset "UVec" begin
+    include("uvec.jl")
+end

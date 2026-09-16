@@ -12,7 +12,7 @@ caller must ensure the operation is valid. Element conversions remain checked.
 Check elision is not guaranteed for iterable construction, `append`, or variadic
 `push`, whose loops use the compiler's normal inlining heuristics.
 
-Mutable operations are not supported; use `push` `pop` and `delete`
+Mutable operations are not supported; use `push`, `pop`, and `Base.setindex`
 instead of the corresponding mutable Base operations.
 """
 struct UVec{U <: Unsigned} <: AbstractVector{Bool}
@@ -93,6 +93,23 @@ end
     i = (i % Int)::Int
     return isodd(right_shift(x.x, inbounds_shift(typeof(x), i)))
 end
+
+function Base.getindex(v::UVec{U}, idx::UnitRange{<:Integer}) where {U <: Unsigned}
+    isempty(idx) && return UVec{U}()
+    @boundscheck checkbounds(v, idx)
+    fst, lst = (first(idx) % UInt32)::UInt32, (last(idx) % UInt32)::UInt32
+    # Shift down to remove the first 1:(fst-1) elements
+    u = right_shift(v.x, fst - UInt32(1))
+    # Mask away bits after lst, and also bits we just shifted into
+    # the length region
+    L = lst - fst + UInt32(1)
+    # Mask of L lower bits
+    mask = left_shift(one(U), L) - one(U)
+    mask = left_shift(mask, length_bits(UVec{U}) % UInt32) # shift into position
+    return new_uvec((u & mask) | (L % U))
+end
+
+Base.getindex(v::UVec, ::Colon) = v
 
 """
     push(v::UVec{U}, i)::UVec{U}

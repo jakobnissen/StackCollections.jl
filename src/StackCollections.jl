@@ -55,8 +55,7 @@ julia> (v2, element) = popfirst(UVec{UInt16}([1, 0]));
 
 julia> element
 true
-=== false
-true
+
 julia> v2 === UVec{UInt16}([0])
 true
 ```
