@@ -60,7 +60,7 @@ end
         largest = (bitwidth(S) - leading_zeros(s.x) - 1) % UInt32
         largest > maximum_member(USet{D}) && throw_uset_oob(USet{D}, largest)
     end
-    return new_uset(D, s.x % D)
+    return new_uset(s.x % D)
 end
 
 USet{U}() where {U} = new_uset(zero(U))
