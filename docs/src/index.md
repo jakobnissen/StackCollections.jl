@@ -1,63 +1,27 @@
 # StackCollections.jl
 
-_Fixed-bit collections in Julia_
+This package implements a immutable bitstype collections. 
+Currently, the following are implemented:
 
-This package implements a few collection types that can be stored in one or a few machine integers:
+* `USet{U <: Unsigned} <: AbstractSet{UInt32}`: Integers as bit sets, which can contain intergers in `UInt32(0):UInt32(n)`, where `n == bitsizeof(U) - 1`.
+* `UVector{U <: Unsigned} <: AbstractVector{Bool}`: Intergers as bit vectors.
 
-* `DigitSet`: A set of integers 0:63
-* `StackSet`: A set of integers N:N+63
-* `StackVector`: A boolean vector with a length up to 64.
-* `OneHotVector`: A boolean vector with exactly one value `true`, rest `false`.
+These types are immutable, so instead of operations like `push!`, `pop!` and `append!`,
+this package defines new non-mutating functions `push`, `pop` and `append`.
 
-The main features of the types are:
+Operations on these types have been microoptimized.
 
-* They are simple to use, implements the basic methods from `Base` you would expect such as `union` for sets and `reverse` for vectors:
+See the details of each type implemented by this package in the sidebar.
 
+## Examples
+```jldoctest
+vect = Bool[1, 0, 1, 1, 1, 0, 0, 1]
+v = UVec{UInt16}(v)
+@assert v == vect
+@assert isbits(v)
+@assert sizeof(v) == 2
+@assert reverse(v) == reverse(vect)
+
+v2 = push(v, false)
+@assert v2 == push!(copy(vect), false)
 ```
-julia> a = StackVector([true, true, false, true]); reverse(a)
-4-element StackVector:
- 1
- 0
- 1
- 1
-```
-
-* They are safe by default, and throws informative error messages if you attempt illegal or undefined operations.
-
-```
-julia> push(DigitSet(), 100)
-ERROR: ArgumentError: DigitSet can only contain 0:63
-```
-
-* All types are immutable and so easier to reason about. Base methods that usually end with an exclamation mark such as `push!` instead must use `push`.
-
-```
-julia> push!(DigitSet(), 100)
-ERROR: MethodError: no method matching push!(::DigitSet, ::Int64)
-```
-
-* They are _highly_ efficiently implemented, with most methods meticulously crafted for maximal performance.
-
-```
-julia> f(x, y) = length(setdiff(x, symdiff(x, y)));
-
-julia> code_native(f, (DigitSet, DigitSet), debuginfo=:none)
-    .section    __TEXT,__text,regular,pure_instructions
-    movq    (%rsi), %rax
-    andq    (%rdi), %rax
-    popcntq %rax, %rax
-    retq
-    nopl    (%rax)
-```
-
-Stack collections can be instantiated from an iterable, for example `StackVector([true, false, true])`, but this is not optimally efficient. Alternatively, they can be directly constructed using the unexported `StackCollections.unsafe` trait. But be careful: The trait is called `unsafe` for a reason - when constructed this way, there is no checking the inputs.
-
-```
-julia> StackVector(UInt(5), StackCollections.unsafe)
-3-element StackVector:
- 1
- 0
- 1
-```
-
-This API follows SemVer 2.0.0. The API for this package is defined by the documentation.
