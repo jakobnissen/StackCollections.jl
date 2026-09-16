@@ -6,6 +6,14 @@ Can contain the integers `UInt32(0):UInt32(B - 1)` when backed by an
 integer consisting of `B` bits.
 Construct from an iterable of integers.
 
+Operations that would introduce an unrepresentable member, or require a
+nonempty set when given an empty one, throw an `ArgumentError`. These checks
+can be disabled locally with `@inbounds`; the caller must ensure the operation
+is valid. Check elision is not guaranteed for operations consuming iterables
+or variadic arguments, whose loops use the compiler's normal inlining heuristics.
+Membership, deletion, intersection and set difference still handle out-of-range
+integers normally under `@inbounds`.
+
 Mutable operations are not supported; use `push` `pop` and `delete`
 instead of the corresponding mutable Base operations.
 
@@ -30,14 +38,14 @@ struct USet{U <: Unsigned} <: AbstractSet{UInt32}
     # Hide inner constructor because e.g. USet{UInt8}(0x05) should return
     # a set with the single element 0x05, so we need to suppress default
     # constructor
-    global function new_uset(::Type{U}, x::U) where {U <: Unsigned}
+    global function new_uset(x::U) where {U <: Unsigned}
         return new{U}(x)
     end
 end
 
 @noinline function throw_uset_oob(::Type{T}, i::Integer) where {T}
     m = maximum_member(T)
-    throw(ArgumentError("Too large value for $(T): Supports up to $(m), got $(i)"))
+    throw(ArgumentError("Value out of range for $(T): Supports 0:$(m), got $(i)"))
 end
 
 @noinline function throw_empty_uset(::Type{T}) where {T}
@@ -47,17 +55,17 @@ end
 
 # Construct one USet from another with different widths: Throw only if s
 # contains an element not representable by destination type.
-function USet{D}(s::USet{S}) where {D, S}
-    bitwidth(D) >= bitwidth(S) && return new_uset(D, s.x % D)
-    iszero(s.x) && return new_uset(D, zero(D))
-    largest = (bitwidth(S) - leading_zeros(s.x) - 1) % UInt32
-    largest > maximum_member(USet{D}) && throw_uset_oob(USet{D}, largest)
+@inline function USet{D}(s::USet{S}) where {D, S}
+    @boundscheck if bitwidth(D) < bitwidth(S) && !isempty(s)
+        largest = (bitwidth(S) - leading_zeros(s.x) - 1) % UInt32
+        largest > maximum_member(USet{D}) && throw_uset_oob(USet{D}, largest)
+    end
     return new_uset(D, s.x % D)
 end
 
-USet{U}() where {U} = new_uset(U, zero(U))
+USet{U}() where {U} = new_uset(zero(U))
 
-# Generic constructor
+# Leave generic iteration to the compiler's normal inlining heuristics.
 function USet{U}(itr) where {U}
     x = USet{U}()
     for i in itr
@@ -93,17 +101,15 @@ function Base.checkbounds(x::USet, i::Integer)
     return Base.checkbounds(Bool, x, i) || throw(BoundsError(x, i))
 end
 
-# TODO: Propagate inbounds here? For the vararg method
-function push(x::USet{U}, i::Integer) where {U}
-    @boundscheck Base.checkbounds(x, i)
+@inline function push(x::USet{U}, i::Integer) where {U}
+    @boundscheck can_contain(x, i) || throw_uset_oob(typeof(x), i)
     return push_inbounds(x, i % UInt32)
 end
 
 function push_inbounds(x::USet{U}, i::UInt32) where {U}
     u = x.x
     u |= left_shift(one(u), i % UInt32)
-    return new === false
-    true_uset(U, u)
+    return new_uset(u)
 end
 
 function push_if_inbounds(x::USet{U}, i::Integer) where {U}
@@ -120,35 +126,35 @@ function push(x::USet{U}, a::Integer, b::Integer, xs::Vararg{Integer}) where {U}
     return x
 end
 
-function pop(x::USet{U}) where {U}
-    @boundscheck(isempty(x) && throw(BoundsError(x, 0)))
+@inline function pop(x::USet{U}) where {U}
+    @boundscheck(isempty(x) && throw_empty_uset(typeof(x)))
     u = x.x
-    new_set = new_uset(U, u & (u - one(u)))
-    element = trailing_zeros(u) % UInt32
+    element = (bitwidth(u) - leading_zeros(u) - 1) % UInt32
+    new_set = new_uset(u ⊻ left_shift(one(u), element))
     return (new_set, element)
 end
 
-function popfirst(x::USet{U}) where {U}
-    @boundscheck(isempty(x) && throw(BoundsError(x, 0)))
+@inline function popfirst(x::USet{U}) where {U}
+    @boundscheck(isempty(x) && throw_empty_uset(typeof(x)))
     u = x.x
-    element = (bitwidth(U) - leading_zeros(x) - 1) % UInt32
-    new_set = u ⊻ left_shift(one(u), element)
+    element = trailing_zeros(u) % UInt32
+    new_set = new_uset(u & (u - one(u))) # Clear lowest bit
     return (new_set, element)
 end
 
 Base.union(x::USet) = x
 
 function Base.union(x::USet{U}, y::USet{U}) where {U <: Unsigned}
-    return new_uset(U, x.x | y.x)
+    return new_uset(x.x | y.x)
 end
 
 # We leverage the constructor is efficient.
 # Note docs of union states `x` controls return type.
-function Base.union(x::USet{T1}, y::USet{T2}) where {T1 <: Unsigned, T2 <: Unsigned}
+Base.@propagate_inbounds function Base.union(x::USet{T1}, y::USet{T2}) where {T1 <: Unsigned, T2 <: Unsigned}
     return union(x, USet{T1}(y))
 end
 
-Base.union(x::USet, set) = union(x, typeof(x)(set))
+Base.@propagate_inbounds Base.union(x::USet, set) = union(x, typeof(x)(set))
 
 function Base.union(x::USet, s1, s2, sets...)
     for set in (s1, s2, sets...)
@@ -160,20 +166,20 @@ end
 function delete(x::USet{U}, i::Integer) where {U}
     can_contain(x, i) || return x
     mask = ~left_shift(one(U), i % UInt32)
-    return new_uset(U, x.x & mask)
+    return new_uset(x.x & mask)
 end
 
 Base.intersect(x::USet) = x
 
 function Base.intersect(x::USet{U}, y::USet{U}) where {U <: Unsigned}
-    return new_uset(U, x.x & y.x)
+    return new_uset(x.x & y.x)
 end
 
 # Note docs of intersect says first arg controls return type
 function Base.intersect(x::USet{T1}, y::USet{T2}) where {T1 <: Unsigned, T2 <: Unsigned}
     # Here, we only need to consider the part of y which fits into
     # x; any extra bits are simply ignored
-    return intersect(x, new_uset(T1, y.x % T1))
+    return intersect(x, new_uset(y.x % T1))
 end
 
 function Base.intersect(x::USet, set)
@@ -198,13 +204,13 @@ end
 Base.setdiff(x::USet) = x
 
 function Base.setdiff(x::USet{U}, y::USet{U}) where {U <: Unsigned}
-    return new_uset(U, x.x & ~y.x)
+    return new_uset(x.x & ~y.x)
 end
 
 # Note setdiff docs says output must be same as first arg
 function Base.setdiff(x::USet{T1}, y::USet{T2}) where {T1 <: Unsigned, T2 <: Unsigned}
     # Same optimization as intersect
-    return setdiff(x, new_uset(T1, y.x % T1))
+    return setdiff(x, new_uset(y.x % T1))
 end
 
 function Base.setdiff(x::USet, set)
@@ -229,16 +235,16 @@ end
 Base.symdiff(x::USet) = x
 
 function Base.symdiff(x::USet{U}, y::USet{U}) where {U <: Unsigned}
-    return new_uset(U, xor(x.x, y.x))
+    return new_uset(xor(x.x, y.x))
 end
 
 # Docs do not say which type should be returned, but the other set ops
 # specify it should be the same as the first arg, so I also follow that here
-function Base.symdiff(x::USet{T1}, y::USet{T2}) where {T1 <: Unsigned, T2 <: Unsigned}
+Base.@propagate_inbounds function Base.symdiff(x::USet{T1}, y::USet{T2}) where {T1 <: Unsigned, T2 <: Unsigned}
     return symdiff(x, USet{T1}(y))
 end
 
-function Base.symdiff(x::USet, set)
+Base.@propagate_inbounds function Base.symdiff(x::USet, set)
     return symdiff(x, typeof(x)(set))
 end
 
@@ -251,21 +257,21 @@ end
 
 Base.issorted(::USet) = true
 
-function Base.first(x::USet)
-    @boundscheck isempty(x) && throw_empty_uset()
+@inline function Base.first(x::USet)
+    @boundscheck isempty(x) && throw_empty_uset(typeof(x))
     return trailing_zeros(x.x) % UInt32
 end
 
-function Base.last(x::USet)
-    @boundscheck isempty(x) && throw_empty_uset()
+@inline function Base.last(x::USet)
+    @boundscheck isempty(x) && throw_empty_uset(typeof(x))
     return (bitwidth(x.x) - leading_zeros(x.x) - 1) % UInt32
 end
 
-Base.minimum(x::USet) = first(x)
-Base.maximum(x::USet) = last(x)
+Base.@propagate_inbounds Base.minimum(x::USet) = first(x)
+Base.@propagate_inbounds Base.maximum(x::USet) = last(x)
 
-function Base.extrema(x::USet)
-    @boundscheck isempty(x) && throw_empty_uset()
+@inline function Base.extrema(x::USet)
+    @boundscheck isempty(x) && throw_empty_uset(typeof(x))
     return (@inbounds(first(x)), @inbounds(last(x)))
 end
 

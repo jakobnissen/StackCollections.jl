@@ -4,8 +4,13 @@
 Immutable boolean vector backed by a single `U`.
 A `T <: UVec` has a maximum length determined by `U`, which
 can be queried by `capacity(T)`.
-Operations that attempts to create `UVec`s larger than its maximum
-capacity throws an `ArgumentError`.
+
+Operations that exceed the maximum capacity, or require a nonempty vector
+when given an empty one, throw an `ArgumentError`. Invalid indices throw a
+`BoundsError`. These checks can be disabled locally with `@inbounds`; the
+caller must ensure the operation is valid. Element conversions remain checked.
+Check elision is not guaranteed for iterable construction, `append`, or variadic
+`push`, whose loops use the compiler's normal inlining heuristics.
 
 Mutable operations are not supported; use `push` `pop` and `delete`
 instead of the corresponding mutable Base operations.
@@ -31,7 +36,7 @@ function UVec{U}(itr) where {U <: Unsigned}
     for item in itr
         element = convert(Bool, item)::Bool
         n_items += 1
-        n_items > max_capacity && throw_full_uvec()
+        @boundscheck n_items > max_capacity && throw_full_uvec()
         u |= left_shift(element % U, shift)
         shift += one(shift)
     end
@@ -83,7 +88,7 @@ function inbounds_shift(::Type{T}, i::Int) where {T <: UVec}
     return (i - 1 + length_bits(T)) % UInt32
 end
 
-function Base.getindex(x::UVec, i::Integer)
+@inline function Base.getindex(x::UVec, i::Integer)
     @boundscheck Base.checkbounds(x, i)
     i = (i % Int)::Int
     return isodd(right_shift(x.x, inbounds_shift(typeof(x), i)))
@@ -94,9 +99,11 @@ end
 
 Convert `i` to `Bool`, and return a new `UVec{U}` identical to `v` but
 with the converted `i` appended to the end.
+
 Throw an `ArgumentError` if `v` is already at maximum capacity.
+The check can be disabled locally with `@inbounds`, similar to `BoundsError`s.
 """
-function push(x::T, i) where {U <: Unsigned, T <: UVec{U}}
+@inline function push(x::T, i) where {U <: Unsigned, T <: UVec{U}}
     b = convert(Bool, i)::Bool
     L = length(x)
     @boundscheck(L == capacity(T) && throw_full_uvec())
@@ -104,7 +111,6 @@ function push(x::T, i) where {U <: Unsigned, T <: UVec{U}}
     return new_uvec(u + one(u))
 end
 
-# TODO: Propagate inbounds?
 function push(x::T, i, is...) where {U <: Unsigned, T <: UVec{U}}
     y = push(x, i)
     for ii in is
@@ -120,6 +126,7 @@ Convert `i` to `Bool`, then return a new `UVec{U}` with the content of `v`,
 but with the converted `i` at index 1, and all preexisting elements shifted
 back.
 Throw an `ArgumentError` if `v` is already at max capacity.
+The check can be disabled locally with `@inbounds`, similar to `BoundsError`s.
 
 ```jldoctest
 julia> v = UVec{UInt8}([1, 0, 1, 1]);
@@ -135,14 +142,14 @@ ERROR: ArgumentError: UVec at maximum size
 [...]
 ```
 """
-function pushfirst(x::T, i) where {U <: Unsigned, T <: UVec{U}}
+@inline function pushfirst(x::T, i) where {U <: Unsigned, T <: UVec{U}}
     b = convert(Bool, i)::Bool
     mask = length_mask(T)
     L = (x.x & mask) + one(U)
     @boundscheck ((L % Int) > capacity(T) && throw_full_uvec())
     u = (x.x & ~mask) << 1
     u |= left_shift(b % U, length_bits(T) % UInt32)
-    return new_uvec(u | (L + one(L)))
+    return new_uvec(u | L)
 end
 
 """
@@ -170,7 +177,7 @@ function append(v::UVec{U}, itr) where {U}
     W = bitwidth(U) % UInt32
     u = v.x & ~length_mask(UVec{U})
     for i in itr
-        shift == W && throw_full_uvec()
+        @boundscheck shift == W && throw_full_uvec()
         iT = convert(Bool, i)::Bool
         u |= left_shift(iT % U, shift)
         L += 1
@@ -179,7 +186,7 @@ function append(v::UVec{U}, itr) where {U}
     return new_uvec(u | (L % U))
 end
 
-function pop(x::T) where {U <: Unsigned, T <: UVec{U}}
+@inline function pop(x::T) where {U <: Unsigned, T <: UVec{U}}
     @boundscheck(isempty(x) && throw_empty_uvec())
     L = length(x)
     shift = inbounds_shift(T, L)
@@ -188,7 +195,7 @@ function pop(x::T) where {U <: Unsigned, T <: UVec{U}}
     return (new_uvec((x.x & mask) - one(U)), element)
 end
 
-function popfirst(x::T) where {U <: Unsigned, T <: UVec{U}}
+@inline function popfirst(x::T) where {U <: Unsigned, T <: UVec{U}}
     @boundscheck(isempty(x) && throw_empty_uvec())
     mask = length_mask(T)
     # Get first element
@@ -221,7 +228,7 @@ function Base.reverse(x::UVec)
     return new_uvec(u | len)
 end
 
-function Base.setindex(x::UVec{U}, v, i::Integer) where {U}
+@inline function Base.setindex(x::UVec{U}, v, i::Integer) where {U}
     vT = convert(Bool, v)::Bool
     @boundscheck Base.checkbounds(x, i)
     i = (i % Int)::Int

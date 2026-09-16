@@ -25,7 +25,9 @@ bitwidth(::U) where {U <: Integer} = bitwidth(U)
 
 Create a new collection of the same type as the input, but with the last element
 removed. The new collection and the removed element is returned as a tuple.
-If collection is empty, throw an `ArgumentError`.
+
+If collection is empty, throw an `ArgumentError`. The check can be disabled locally
+with `@inbounds`, similar to `BoundsError`s.
 
 ```jldoctest
 julia> (v2, element) = pop(UVec{UInt16}([1, 0]));
@@ -44,7 +46,9 @@ function pop end
 
 Create a new collection of the same type as the input, but with the first element
 removed. The new collection and the removed element is returned as a tuple.
-If collection is empty, throw an `ArgumentError`.
+
+If collection is empty, throw an `ArgumentError`. The check can be disabled locally
+with `@inbounds`, similar to `BoundsError`s.
 
 ```jldoctest
 julia> (v2, element) = popfirst(UVec{UInt16}([1, 0]));
