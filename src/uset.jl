@@ -1,3 +1,28 @@
+"""
+    USet{U <: Unsigned} <: AbstractSet{UInt32}
+
+An immutable, sorted bit set backed by an integer of type `U`.
+Can contain the integers `UInt32(0):UInt32(B - 1)` when backed by an
+integer consisting of `B` bits.
+Construct from an iterable of integers.
+
+Mutable operations are not supported; use `push` `pop` and `delete`
+instead of the corresponding mutable Base operations.
+
+# Examples
+```jldoctest
+julia> s = USet{UInt32}([4, 2, 1]);
+
+julia> collect(s) == [1, 2, 4] # ordered
+true
+
+julia> ss = push(s, 5); ss == s # immutable
+false
+
+julia> symdiff(s, ss) == USet{UInt8}(5)
+true
+```
+"""
 struct USet{U <: Unsigned} <: AbstractSet{UInt32}
     # Bit set where lowest to highest bits are UInt32(0) upwards
     x::U
@@ -15,10 +40,17 @@ end
     throw(ArgumentError("Too large value for $(T): Supports up to $(m), got $(i)"))
 end
 
+@noinline function throw_empty_uset(::Type{T}) where {T}
+    throw(ArgumentError("$(T) must be nonempty"))
+end
+
+
+# Construct one USet from another with different widths: Throw only if s
+# contains an element not representable by destination type.
 function USet{D}(s::USet{S}) where {D, S}
-    sizeof(D) >= sizeof(S) && return new_uset(D, s.x % D)
+    bitwidth(D) >= bitwidth(S) && return new_uset(D, s.x % D)
     iszero(s.x) && return new_uset(D, zero(D))
-    largest = (8 * sizeof(S) - leading_zeros(s.x) - 1) % UInt32
+    largest = (bitwidth(S) - leading_zeros(s.x) - 1) % UInt32
     largest > maximum_member(USet{D}) && throw_uset_oob(USet{D}, largest)
     return new_uset(D, s.x % D)
 end
@@ -34,11 +66,10 @@ function USet{U}(itr) where {U}
     return x
 end
 
-maximum_member(::Type{USet{U}}) where {U} = (8 * sizeof(U) - 1) % UInt32
+maximum_member(::Type{USet{U}}) where {U} = (bitwidth(U) - 1) % UInt32
 
 can_contain(::Type{T}, i::Integer) where {T <: USet} = 0 <= i <= maximum_member(T)
 can_contain(::T, i::Integer) where {T <: USet} = can_contain(T, i)
-
 
 Base.empty(::USet{U}) where {U} = USet{U}()
 Base.length(x::USet) = count_ones(x.x)
@@ -71,7 +102,8 @@ end
 function push_inbounds(x::USet{U}, i::UInt32) where {U}
     u = x.x
     u |= left_shift(one(u), i % UInt32)
-    return new_uset(U, u)
+    return new === false
+    true_uset(U, u)
 end
 
 function push_if_inbounds(x::USet{U}, i::Integer) where {U}
@@ -89,11 +121,18 @@ function push(x::USet{U}, a::Integer, b::Integer, xs::Vararg{Integer}) where {U}
 end
 
 function pop(x::USet{U}) where {U}
-    # TODO: Again, boundscheck is too sketchy for this
     @boundscheck(isempty(x) && throw(BoundsError(x, 0)))
     u = x.x
     new_set = new_uset(U, u & (u - one(u)))
     element = trailing_zeros(u) % UInt32
+    return (new_set, element)
+end
+
+function popfirst(x::USet{U}) where {U}
+    @boundscheck(isempty(x) && throw(BoundsError(x, 0)))
+    u = x.x
+    element = (bitwidth(U) - leading_zeros(x) - 1) % UInt32
+    new_set = u ⊻ left_shift(one(u), element)
     return (new_set, element)
 end
 
@@ -213,20 +252,20 @@ end
 Base.issorted(::USet) = true
 
 function Base.first(x::USet)
-    @boundscheck isempty(x) && throw(ArgumentError("USet must be nonempty"))
+    @boundscheck isempty(x) && throw_empty_uset()
     return trailing_zeros(x.x) % UInt32
 end
 
 function Base.last(x::USet)
-    @boundscheck isempty(x) && throw(ArgumentError("USet must be nonempty"))
-    return (8 * sizeof(x.x) - leading_zeros(x.x) - 1) % UInt32
+    @boundscheck isempty(x) && throw_empty_uset()
+    return (bitwidth(x.x) - leading_zeros(x.x) - 1) % UInt32
 end
 
 Base.minimum(x::USet) = first(x)
 Base.maximum(x::USet) = last(x)
 
 function Base.extrema(x::USet)
-    @boundscheck isempty(x) && throw(ArgumentError("USet must be nonempty"))
+    @boundscheck isempty(x) && throw_empty_uset()
     return (@inbounds(first(x)), @inbounds(last(x)))
 end
 
