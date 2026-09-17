@@ -17,6 +17,13 @@ integers normally under `@inbounds`.
 Mutable operations are not supported; use `push` `pop` and `delete`
 instead of the corresponding mutable Base operations.
 
+The layour of this type is guaranteed to be identical to a `U`,
+where the bits from LSB to MSB represent the presence of the integers
+zero and upwards. I.e. `USet{UInt8}([0, 3, 5])` is guaranteed to have the same
+memory layout as `0x29`.
+Obtain the equivalent integer with `Integer(s)`. This is guaranteed to be
+a noop. Construct from the equivalent integer with [`uset_from_integer`](@ref)
+
 # Examples
 ```jldoctest
 julia> s = USet{UInt32}([4, 2, 1]);
@@ -41,6 +48,16 @@ struct USet{U <: Unsigned} <: AbstractSet{UInt32}
     global function new_uset(x::U) where {U <: Unsigned}
         return new{U}(x)
     end
+end
+
+function Base.show(io::IO, x::USet)
+    v = collect(x)
+    inner = if length(v) > 20
+        join(v[1:10], ", ") * " … " * join(v[end-9:end], ", ")
+    else
+        join(v, ", ")
+    end
+    print(io, typeof(x), "([", inner, "])")
 end
 
 @noinline function throw_uset_oob(::Type{T}, i::Integer) where {T}
@@ -74,14 +91,79 @@ function USet{U}(itr) where {U}
     return x
 end
 
+# N.B: We only convert from USet and not AbstractSet{<:Integer} in general
+# because I want conversion here to be fast, as convert is called implicitly
+Base.convert(::Type{USet{D}}, x::Type{USet{S}}) where {D, S} = USet{D}(x)
+
+"""
+    maximum_member(::Type{<:USet{U}})::UInt32
+
+Return the maximum member that can be contained by a `USet{U}`.
+This value is compile-time constant, and is equal to `2 ^ N - 1`,
+where `N` is the bitsize of `U`.
+
+```jldoctest
+julia> maximum_member(USet{UInt128})
+0x0000007f
+
+julia> maximum_member(USet{UInt16})
+0x0000000f
+```
+"""
 maximum_member(::Type{USet{U}}) where {U} = (bitwidth(U) - 1) % UInt32
 
+"""
+    can_contain(::Type{<:USet{U}}, i::Integer)::Bool
+
+Return whether a `USet{U}` can contain an `i`, by checking if `i`
+is in `0:maximum_member(USet{U})`.
+
+jldoctest
+```
+julia> can_contain(USet{UInt32}, 55)
+false
+
+julia> can_contain(USet{UInt64}, 55)
+true
+```
+"""
 can_contain(::Type{T}, i::Integer) where {T <: USet} = 0 <= i <= maximum_member(T)
 can_contain(::T, i::Integer) where {T <: USet} = can_contain(T, i)
 
 Base.empty(::USet{U}) where {U} = USet{U}()
 Base.length(x::USet) = count_ones(x.x)
 Base.isempty(x::USet) = iszero(x.x)
+
+# TODO: Determine if we want this method
+Base.copy(x::USet) = x
+
+Base.Integer(x::USet) = x.x
+
+# TODO: Think of a better name
+"""
+    uset_from_integer(u::U)::USet{U} where {U <: Unsigned}
+
+Construct a `USet{U}` using the backing integer `u`.
+For bitstype `U`, it is guaranteed that `Integer(uset_from_integer(u)) === u`.
+
+The resulting `USet` contains the elements represented by the set
+bits in `u`, from `UInt32(0)` being the LSB, and `UInt32(bitsizeof(U) - 1)`
+is the MSB.
+
+```jldoctest
+julia> u = 0x50ae; s = uset_from_integer(u);
+
+julia> s isa USet{UInt16}
+true
+
+julia> s == Set([i for i in 0:16 if isodd(u >> i)])
+true
+
+julia> Integer(s) === u
+true
+```
+"""
+uset_from_integer(u::Unsigned) = new_uset(u)
 
 function Base.iterate(x::USet{U}, state::U = x.x) where {U}
     iszero(state) && return nothing
@@ -163,7 +245,25 @@ function Base.union(x::USet, s1, s2, sets...)
     return x
 end
 
-function delete(x::USet{U}, i::Integer) where {U}
+"""
+    pop(x::USet{U}, i::Integer)::USet{U}
+
+Construct a new `USet` equal to `x`, except without `i` as an element.
+
+```jldoctest
+julia> s = USet{UInt8}([0, 2, 3, 6]);
+
+julia> delete(s, 1) === s
+true
+
+julia> delete(s, 3) == Set([0, 2, 6])
+true
+
+julia> delete(s, 99999) === s
+true
+```
+"""
+function pop(x::USet{U}, i::Integer) where {U}
     can_contain(x, i) || return x
     mask = ~left_shift(one(U), i % UInt32)
     return new_uset(x.x & mask)

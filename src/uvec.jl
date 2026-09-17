@@ -43,6 +43,25 @@ function UVec{U}(itr) where {U <: Unsigned}
     return new_uvec(u | n_items % U)
 end
 
+@noinline function throw_uvec_too_big(dest::Type{UVec{D}}, source::Type{UVec{S}}) where {S, D}
+    throw(ArgumentError("$(source)'s length exceed capacity of $(dest)"))
+end
+
+function UVec{T1}(x::UVec{T2}) where {T1 <: Unsigned, T2 <: Unsigned}
+    L = length(x)
+    L > capacity(UVec{T1}) && throw_uvec_too_big()
+    l_shift = length_bits(T2) - length_bits(T2)
+    # Note: We use << here because if T1 is smaller than T2, we need to right shift,
+    # and the built in << can also right shift
+    return new_uvec(((x.x << l_shift) % T1) | (L % T1))
+end
+
+# N.B: We only convert from UVec and not AbstractVector{Bool} in general
+# because I want conversion here to be fast, as convert is called implicitly
+Base.convert(::Type{UVec{U1}}, x::UVec) where U1 = UVec{U1}(x)
+
+UVec{U}(x::UVec{U}) where {U <: Unsigned} = x
+
 function unused_bits(x::UVec{U}) where {U}
     return bitwidth(U) - length_bits(UVec{U}) - length(x)
 end
@@ -83,6 +102,9 @@ end
 Base.size(x::UVec) = (length(x),)
 Base.length(x::UVec) = (x.x & length_mask(typeof(x))) % Int
 Base.isempty(x::UVec) = iszero(x.x)
+Base.copy(x::UVec) = x
+Base.empty(::UVec{U}) where U = UVec{U}()
+Base.IndexStyle(::Type{<:UVec}) = Base.IndexLinear()
 
 function inbounds_shift(::Type{T}, i::Int) where {T <: UVec}
     return (i - 1 + length_bits(T)) % UInt32
@@ -137,11 +159,11 @@ function push(x::T, i, is...) where {U <: Unsigned, T <: UVec{U}}
 end
 
 """
-    pushfirst(v::UVec{U}, i)::UVec{U}
+    pushfirst(v::UVec{U}, i...)::UVec{U}
 
-Convert `i` to `Bool`, then return a new `UVec{U}` with the content of `v`,
-but with the converted `i` at index 1, and all preexisting elements shifted
-back.
+Convert every element of `i` to `Bool`, then return a new `UVec{U}`
+with the content of `v`, but with the converted elements in order, at the beginning,
+and all preexisting elements shifted back.
 Throw an `ArgumentError` if `v` is already at max capacity.
 The check can be disabled locally with `@inbounds`, similar to `BoundsError`s.
 
@@ -154,12 +176,15 @@ true
 julia> v == v2
 false
 
+julia> pushfirst(v, true, true, false) == [1, 0, 1, 1, 1, 1, 0]
+true
+
 julia> pushfirst(v2, false)
 ERROR: ArgumentError: UVec at maximum size
 [...]
 ```
 """
-@inline function pushfirst(x::T, i) where {U <: Unsigned, T <: UVec{U}}
+function pushfirst(x::T, i) where {U <: Unsigned, T <: UVec{U}}
     b = convert(Bool, i)::Bool
     mask = length_mask(T)
     L = (x.x & mask) + one(U)
@@ -167,6 +192,28 @@ ERROR: ArgumentError: UVec at maximum size
     u = (x.x & ~mask) << 1
     u |= left_shift(b % U, length_bits(T) % UInt32)
     return new_uvec(u | L)
+end
+
+function pushfirst(x::T, i1, is...) where {U <: Unsigned, T <: UVec{U}}
+    elem_length = length(is) + 1
+    @boundscheck (elem_length + length(x) > capacity(T) && throw_full_uvec())
+    mask = length_mask(T)
+
+    # Obtain updated length
+    L = (x.x & mask) + (elem_length % U)
+
+    # Remove length field and shift existing elements upwards
+    u = (x.x & ~mask) << elem_length # n.b. elem_length is compile time known
+
+    # Make a U which stores the new elements in the right position
+    u2 = zero(u)
+    shift = length_bits(T) % UInt32
+    for i in (i1, is...)
+        u2 |= left_shift((convert(Bool, i)::Bool) % U, shift)
+        shift += one(shift)
+    end
+    # Finally, create the uvec by ORing the old elements, new elements and length together.
+    new_uvec(u | u2 | L)
 end
 
 """
@@ -201,6 +248,109 @@ function append(v::UVec{U}, itr) where {U}
         shift += one(shift)
     end
     return new_uvec(u | (L % U))
+end
+
+"""
+    insert(v::UVec{U}, idx::Integer, item)::UVec{U}
+
+Convert `item` to `Bool`, then return a new `USet{U}` based on `v`, but with the converted
+`item` inserted at index `idx`.
+The elements at, or after `idx` is shifted one index up.
+The index `idx` must be in `1:length(v)+1`. Throws a `BoundsError` if `idx` is out of bounds.
+Throw an `ArgumentError` if `v` is at capacity. Both are disabled with `@inbounds`.
+
+# Examples
+```jldoctest
+julia> v = USet{UInt8}([1, 1, 0, 1]);
+
+julia> insert(v, 2, 0) |> print
+Bool[1, 0, 1, 0, 1]
+
+julia> insert(v, 5, 1) |> print
+Bool[1, 1, 0, 1, 0]
+
+julia> insert(v, 6, 1) |> print
+ERROR: BoundsError: attempt to access 4-element UVec{UInt8} at index [6]
+[...]
+```
+"""
+function insert(v::T, index::Integer, item) where {U <: Unsigned, T <: UVec{U}}
+    @boundscheck if index < 0x01 || index > (length(v) + 1)
+        throw(BoundsError(v, index))
+    end
+    @boundscheck (length(v) == capacity(T) && throw_full_uvec())
+    iT = convert(Bool, item)::Bool
+    # We know index is inbounds, so we truncate without checking
+    idx = (index % Int)::Int
+    shift = inbounds_shift(T, idx)
+    mask = left_shift(one(U), shift) - one(U)
+    # Moved elements: Every element at or after index and shift it upwards
+    u1 = (v.x & ~mask) << 1
+    # Unmoved elements: All elements before index are not moved. Length is updated
+    u2 = (v.x & mask) + one(U)
+    # Finally, element is added
+    u3 = left_shift(iT % U, shift)
+    new_uvec(u1 | u2 | u3)
+end
+
+"""
+    deleteat(v::UVec{U}, idx::Integer)::UVec{U}
+    deleteat(v::UVec{U}, idx::UnitRange{<:Integer})::UVec{U}
+
+Return a new `UVec` based on `v`, but with the index or indices `idx` removed,
+and all subsequent element shifted downwards to fill the deleted elements.
+
+Throw a `BoundsError` if `idx` is out of bounds for `v`. This can be disabled with `@inbounds`.
+
+# Examples
+```jldoctest
+julia> v = USet{UInt8}([1, 1, 0, 1]);
+
+julia> deleteat(v, 2:3) |> print
+Bool[1, 1]
+
+julia> deleteat(v, 4) |> print
+Bool[1, 1, 0]
+
+julia> deleteat(v, 4:5) |> print
+ERROR: BoundsError: attempt to access 4-element UVec{UInt8} at index [4:5]
+[...]
+```
+"""
+function deleteat(v::T, idx::Integer) where {U <: Unsigned, T <: UVec{U}}
+    @boundscheck checkbounds(v, idx)
+    i = (idx % Int)::Int
+    shift = inbounds_shift(v, i)
+    # Get a U with length decremented by one, and only all elements before idx
+    mask = left_shift(one(U), shift) - one(U)
+    u = (v.x & mask) - one(U)
+
+    # Set mask to cover all elements before idx but not idx itself,
+    # then update u so it contains all these elements, shifted down into place
+    mask = ~mask << 1
+    u |= (v.x & mask) >> 1
+
+    # Now we have old elements, new elements and the updated length
+    new_uvec(u)
+end
+
+function deleteat(v::T, idx::UnitRange{<:Integer}) where {U <: Unsigned, T <: UVec{U}}
+    isempty(idx) && return v
+    @boundscheck checkbounds(v, idx)
+    (fst, lst) = ((first(idx) % UInt32)::UInt32, (last(idx) % UInt32)::UInt32)
+    B = length_bits(T) % UInt32
+    L = lst - fst + UInt32(1)
+
+    # Get U with elements before fst, and updated length
+    mask = left_shift(one(U), fst + B) - one(U)
+    u1 = (v.x & mask) - (L % U)
+    @show bitstring(u1)
+
+    # Get a mask with all elements after lst, shifted down
+    mask = ~left_shift(one(U), lst + B + one(UInt32)) - one(U)
+    u2 = left_shift(v.x & mask, L)
+
+    return new_uvec(u1 | u2)
 end
 
 @inline function pop(x::T) where {U <: Unsigned, T <: UVec{U}}
@@ -245,9 +395,31 @@ function Base.reverse(x::UVec)
     return new_uvec(u | len)
 end
 
+function Base.reverse(v::UVec{U}, first_index::Integer, last_index::Integer) where {U}
+    last_index <= first_index && return v
+    @boundscheck checkbounds(v, first_index:last_index)
+    # Convert to UInt32 for efficiency to eliminate possibility of negative values
+    first_index, last_index = (first_index % UInt32)::UInt32, (last_index % UInt32)::UInt32
+
+    # Extract the bits that should be reversed, and reverse them with bitreverse
+    L = last_index - first_index + one(UInt32)
+    mask = left_shift(one(U), L) - one(U)
+    BL = length_bits(UVec{U}) % UInt32
+    mask_shift = BL + first_index - one(UInt32)
+    mask = left_shift(mask, mask_shift)
+    u = bitreverse(v.x & mask)
+
+    # Reversing bits may have shifted them up or down. E.g. an integer
+    # 0x00000ff0 turns into 0x0ff00000.
+    # Shift back into position. Note than >> can shift in both directions,
+    # depending on whether the shift is negative or positive.
+    down_shift = bitwidth(U) - L - 2BL - 2 * first_index + UInt32(2)
+    return new_uvec((v.x & ~mask) | (u >> down_shift))
+end
+
 @inline function Base.setindex(x::UVec{U}, v, i::Integer) where {U}
-    vT = convert(Bool, v)::Bool
     @boundscheck Base.checkbounds(x, i)
+    vT = convert(Bool, v)::Bool
     i = (i % Int)::Int
     shift = inbounds_shift(typeof(x), i)
     u = x.x & ~left_shift(one(U), shift)
@@ -255,6 +427,7 @@ end
     return new_uvec(u)
 end
 
+Base.circshift(x::UVec, i::Tuple{Integer}) = circshift(x, only(i))
 function Base.circshift(x::UVec{U}, i::Integer) where {U <: Unsigned}
     L = length(x) % UInt
     # Exit branch on iszero(L) both for correctness, and to let compiler

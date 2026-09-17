@@ -65,14 +65,19 @@ function popfirst end
 include("uset.jl")
 include("uvec.jl")
 
+public maximum_member
+
 export USet,
     UVec,
     push,
     pushfirst,
     pop,
     popfirst,
+    deleteat,
     append,
-    delete,
-    capacity
+    insert,
+    capacity,
+    uset_from_integer,
+    can_contain
 
 end # module
