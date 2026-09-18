@@ -52,8 +52,8 @@ end
     @boundscheck L > capacity(UVec{T1}) && throw_uvec_too_big(UVec{T1}, UVec{T2})
     # Remove the source length before converting, then place the payload above
     # the destination length. This preserves high bits when widening.
-    u = right_shift(x.x, length_bits(UVec{T2}) % UInt32) % T1
-    u = left_shift(u, length_bits(UVec{T1}) % UInt32)
+    u = right_shift(x.x, length_bits(UVec{T2})) % T1
+    u = left_shift(u, length_bits(UVec{T1}))
     return new_uvec(u | (L % T1))
 end
 
@@ -191,7 +191,7 @@ function pushfirst(x::T, i) where {U <: Unsigned, T <: UVec{U}}
     L = (x.x & mask) + one(U)
     @boundscheck ((L % Int) > capacity(T) && throw_full_uvec())
     u = (x.x & ~mask) << 1
-    u |= left_shift(b % U, length_bits(T) % UInt32)
+    u |= left_shift(b % U, length_bits(T))
     return new_uvec(u | L)
 end
 
@@ -365,7 +365,7 @@ end
     @boundscheck(isempty(x) && throw_empty_uvec())
     mask = length_mask(T)
     # Get first element
-    element = testbit(x.x, length_bits(T) % UInt)
+    element = testbit(x.x, length_bits(T))
     # Extract out length
     new_len = (x.x & mask) - one(U)
     # Shift down to pop out first element, and make sure to remove
@@ -441,7 +441,7 @@ function Base.circshift(x::UVec{U}, i::Integer) where {U <: Unsigned}
 
     # The top i bits wrap around. We emulate wrapping by shifting them
     # L - i bits down
-    result |= right_shift(x.x, (L - i) % UInt)
+    result |= right_shift(x.x, L - i)
 
     # Above shifting moved some bits beyond the coding bits
     # so remove those
