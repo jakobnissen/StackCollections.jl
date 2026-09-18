@@ -1,5 +1,5 @@
 @testset "Editing and conversion across backing widths" begin
-    for U in (UInt8, UInt16, UInt32, UInt64, UInt128)
+    for U in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
         @testset "$U" begin
             T = UVec{U}
             cap = capacity(T)
@@ -19,7 +19,7 @@
                     v = T(data)
                     # Identity with freshly constructed values catches stale bits
                     # outside the elements as well as corrupt length fields.
-                    for D in (UInt8, UInt16, UInt32, UInt64, UInt128)
+                    for D in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
                         if len <= capacity(UVec{D})
                             expected = UVec{D}(data)
                             @test UVec{D}(v) === expected
@@ -43,7 +43,9 @@
                         for j in unique((i, i + (len - i) ÷ 2, len))
                             @test deleteat(v, i:j) === T(deleteat!(copy(data), i:j))
                             # Includes positive, zero and negative reversal offsets.
-                            @test reverse(v, i, j) === T(reverse(data, i, j))
+                            # Nontrivial reversal needs bitreverse, which
+                            # BitIntegers 0.3.7 does not implement.
+                            @test reverse(v, i, j) === T(reverse(data, i, j)) broken = i < j && !hasmethod(bitreverse, Tuple{U})
                         end
                     end
                     @test deleteat(v, 1:len) === T()
@@ -61,7 +63,7 @@
 end
 
 @testset "Vector replacement across backing widths" begin
-    for U in (UInt8, UInt16, UInt32, UInt64, UInt128)
+    for U in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
         for len in (1, capacity(UVec{U}) ÷ 2, capacity(UVec{U}))
             for data in (trues(len), falses(len), isodd.(1:len))
                 v = UVec{U}(data)
@@ -82,7 +84,7 @@ end
 end
 
 @testset "Range replacement across backing widths" begin
-    for D in (UInt8, UInt16, UInt32, UInt64, UInt128), S in (UInt8, UInt16, UInt32, UInt64, UInt128)
+    for D in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512), S in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
         for len in (capacity(UVec{D}) ÷ 2, capacity(UVec{D}))
             limit = min(len, capacity(UVec{S}))
             for n in unique((1, limit ÷ 2, limit))
@@ -104,7 +106,7 @@ end
 end
 
 @testset "Conversion capacity boundaries" begin
-    for S in (UInt8, UInt16, UInt32, UInt64, UInt128), D in (UInt8, UInt16, UInt32, UInt64, UInt128)
+    for S in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512), D in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
         len = min(capacity(UVec{S}), capacity(UVec{D}))
         # A set high bit must survive widening and narrowing at capacity.
         data = isodd.(1:len)

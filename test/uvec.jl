@@ -21,7 +21,7 @@
     @test UVec{UInt8}(UVec{UInt16}()) === UVec{UInt8}()
     @test_throws ArgumentError UVec{UInt8}(UVec{UInt16}(falses(6)))
 
-    for (T, n) in ((UInt8, 5), (UInt16, 12), (UInt32, 27), (UInt64, 58), (UInt128, 121))
+    for (T, n) in ((UInt8, 5), (UInt16, 12), (UInt32, 27), (UInt64, 58), (UInt128, 121), (UInt256, 248), (UInt512, 503))
         @test capacity(UVec{T}) === n
         @test isbitstype(UVec{T})
         @test sizeof(UVec{T}) == sizeof(T)
@@ -426,14 +426,21 @@ end
 end
 
 @testset "Backing widths and lengths" begin
-    # Every UInt8 vector is covered. Wider types exercise every length with
+    # Every UInt8 vector is covered. Native types exercise every length with
     # patterns that expose length-bit carries, high bits, and cleared bits.
     # Identity with a freshly constructed result also checks that operations
     # leave no stale bits outside the encoded vector.
-    for T in (UInt8, UInt16, UInt32, UInt64, UInt128)
+    for T in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
         @testset "$T" begin
             n = capacity(UVec{T})
-            for len in 0:n
+            # Sample large types at boundaries without making the per-index
+            # checks quadratic in their full capacity.
+            lengths = if T in (UInt256, UInt512)
+                filter(<=(n), (0, 1, 127, 128, 129, 255, 256, 257, n - 1, n))
+            else
+                0:n
+            end
+            for len in lengths
                 patterns = if T === UInt8
                     ([isodd(bits >> i) for i in 0:(len - 1)] for bits in 0:((1 << len) - 1))
                 else
@@ -470,8 +477,9 @@ end
                             @test findprev(f, v, i) === findprev(f, data, i)
                         end
                     end
-                    @test reverse(v) === UVec{T}(reverse(data))
-                    @test reverse(reverse(v)) === v
+                    # BitIntegers 0.3.7 does not implement bitreverse.
+                    @test reverse(v) === UVec{T}(reverse(data)) broken = !hasmethod(bitreverse, Tuple{T})
+                    @test reverse(reverse(v)) === v broken = !hasmethod(bitreverse, Tuple{T})
                     for shift in (-len - 1, -1, 0, 1, len, len + 1)
                         @test circshift(v, shift) === UVec{T}(circshift(data, shift))
                     end

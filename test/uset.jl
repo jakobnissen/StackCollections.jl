@@ -18,7 +18,7 @@
 
     # Exercise the lowest and highest representable bits, including singleton
     # sets used by first/last, pop, and popfirst.
-    for T in (UInt8, UInt16, UInt128)
+    for T in (UInt8, UInt16, UInt128, UInt256, UInt512)
         max_member = Int(maximum_member(USet{T}))
         low = USet{T}([0])
         high = USet{T}([max_member])
@@ -301,7 +301,7 @@ end
 end
 
 @testset "Conversion and raw storage" begin
-    for S in (UInt8, UInt16, UInt32, UInt64, UInt128)
+    for S in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
         for raw in (zero(S), one(S), S(0xa5), typemax(S), one(S) << (8sizeof(S) - 1))
             s = uset_from_integer(raw)
             @test s isa USet{S}
@@ -311,7 +311,7 @@ end
             @test uset_from_integer(Integer(s)) === s
             @test copy(s) === s
             @test convert(USet{S}, s) === s
-            for D in (UInt8, UInt16, UInt32, UInt64, UInt128)
+            for D in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
                 if isempty(s) || maximum(s) < 8sizeof(D)
                     @test convert(USet{D}, s) === USet{D}(collect(s))
                 else
@@ -323,4 +323,58 @@ end
     @test Integer(USet{UInt8}([0, 3, 5])) === 0x29
     @test uset_from_integer(0x05) === USet{UInt8}([0, 2])
     @test_throws MethodError uset_from_integer(5)
+end
+
+@testset "Large backing integers" begin
+    for U in (UInt256, UInt512)
+        @testset "$U" begin
+            top = 8sizeof(U) - 1
+            members = [0, 127, 128, 129, top - 1, top]
+            reference = Set(members)
+            s = USet{U}(members)
+            @test collect(s) == UInt32.(members)
+            @test length(s) == length(reference)
+            @test maximum_member(typeof(s)) == top
+            @test extrema(s) == (UInt32(0), UInt32(top))
+            for i in (-1, 0, 126, 127, 128, 129, 130, top - 1, top, top + 1)
+                @test (i in s) == (i in reference)
+            end
+            @test push(s, 200) == union(reference, [200])
+            @test pop(s, 129) == setdiff(reference, [129])
+            remaining, item = pop(s)
+            @test remaining == setdiff(reference, [top])
+            @test item === UInt32(top)
+            high = USet{U}([129, top])
+            remaining, item = popfirst(high)
+            @test collect(remaining) == UInt32[top]
+            @test item === UInt32(129)
+            @test filter(>(128), s) == filter(>(128), reference)
+
+            # Compare same-width and mixed-width operations with ordinary sets.
+            # The UInt512 operand also has a member that cannot fit in UInt256.
+            for V in (UInt256, UInt512)
+                others = [127, 129, 200, 8sizeof(V) - 1]
+                t = USet{V}(others)
+                expected = Set(others)
+                for op in (intersect, setdiff)
+                    result = op(s, t)
+                    @test result isa USet{U}
+                    @test result == op(reference, expected)
+                end
+                for op in (union, symdiff)
+                    if maximum(others) <= top
+                        result = op(s, t)
+                        @test result isa USet{U}
+                        @test result == op(reference, expected)
+                    else
+                        @test_throws ArgumentError op(s, t)
+                    end
+                end
+                @test !isdisjoint(s, t)
+                @test isdisjoint(high, USet{V}([128, 200]))
+                @test issubset(USet{V}([128, 129]), s)
+                @test !issubset(t, s)
+            end
+        end
+    end
 end
