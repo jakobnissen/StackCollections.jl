@@ -344,6 +344,40 @@ end
 @testset "Vector operations" begin
     v = UVec{UInt8}([1, 0, 0, 1, 0])
 
+    @testset "Search indices" begin
+        for U in (UInt8, UInt16, UInt32, UInt64, UInt128)
+            for data in (Bool[], Bool[1, 0, 1, 0])
+                searched = UVec{U}(data)
+                for f in (identity, !)
+                    for I in (Int8, UInt8, Int128, UInt128, BigInt)
+                        @test_throws BoundsError findnext(f, searched, I(0))
+                        @test findnext(f, searched, I(length(searched) + 1)) === nothing
+                        @test findprev(f, searched, I(0)) === nothing
+                        @test_throws BoundsError findprev(f, searched, I(length(searched) + 1))
+                        for i in eachindex(data)
+                            @test findnext(f, searched, I(i)) === findnext(f, data, i)
+                            @test findprev(f, searched, I(i)) === findprev(f, data, i)
+                            @test (@inbounds findnext(f, searched, I(i))) === findnext(f, data, i)
+                            @test (@inbounds findprev(f, searched, I(i))) === findprev(f, data, i)
+                        end
+                    end
+                    # Check before narrowing: these values can wrap to valid indices.
+                    for i in (-1, typemin(Int), typemin(Int128), -big(2)^128 + 1)
+                        @test_throws BoundsError findnext(f, searched, i)
+                        @test findprev(f, searched, i) === nothing
+                    end
+                    for i in (
+                            typemax(Int), typemax(UInt128),
+                            UInt128(typemax(UInt)) + 2, big(2)^128 + 1,
+                        )
+                        @test findnext(f, searched, i) === nothing
+                        @test_throws BoundsError findprev(f, searched, i)
+                    end
+                end
+            end
+        end
+    end
+
     @testset "sum" begin
         @test sum(v) === 2
         @test sum(UVec{UInt8}()) === 0
@@ -417,6 +451,25 @@ end
                     @test v[:] === v
                     @test v[1:len] === v
                     @test sum(v) === sum(data)
+                    if isempty(data)
+                        @test_throws ArgumentError argmin(v)
+                        @test_throws ArgumentError argmax(v)
+                    else
+                        @test argmin(v) === argmin(data)
+                        @test argmax(v) === argmax(data)
+                        @test (@inbounds argmin(v)) === argmin(data)
+                        @test (@inbounds argmax(v)) === argmax(data)
+                    end
+                    for f in (identity, !)
+                        @test findnext(f, v, len + 1) === nothing
+                        @test findprev(f, v, 0) === nothing
+                        @test_throws BoundsError findnext(f, v, 0)
+                        @test_throws BoundsError findprev(f, v, len + 1)
+                        for i in eachindex(data)
+                            @test findnext(f, v, i) === findnext(f, data, i)
+                            @test findprev(f, v, i) === findprev(f, data, i)
+                        end
+                    end
                     @test reverse(v) === UVec{T}(reverse(data))
                     @test reverse(reverse(v)) === v
                     for shift in (-len - 1, -1, 0, 1, len, len + 1)

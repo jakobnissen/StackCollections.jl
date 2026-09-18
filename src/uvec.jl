@@ -525,3 +525,49 @@ function Base.circshift(x::UVec{U}, i::Integer) where {U <: Unsigned}
     result |= L % U
     return new_uvec(result)
 end
+
+@inline function Base.findnext(f::Union{typeof(identity), typeof(!)}, v::UVec{U}, idx::Integer) where {U <: Unsigned}
+    # Base throws below the first index, but returns nothing past the end.
+    @boundscheck(idx < 1 && Base.throw_boundserror(v, idx))
+    idx > length(v) && return nothing
+    idx = idx % Int
+    # Remove the length and elements before idx. Complementing also sets
+    # unused high bits; checking the result against the length excludes them.
+    u = f === identity ? v.x : ~v.x
+    u = right_shift(u, length_bits(UVec{U}) + idx - 1)
+    result = trailing_zeros(u) + idx
+    return result <= length(v) ? result : nothing
+end
+
+@inline function Base.findprev(f::Union{typeof(identity), typeof(!)}, v::UVec{U}, idx::Integer) where {U <: Unsigned}
+    # Check both limits before narrowing potentially large integer indices.
+    @boundscheck(idx > length(v) && Base.throw_boundserror(v, idx))
+    idx < 1 && return nothing
+    idx = idx % Int
+    # Shift idx to the top, discarding all later elements. Length bits can
+    # remain: a match in that field produces a nonpositive result.
+    u = f === identity ? v.x : ~v.x
+    u = left_shift(u, bitwidth(U) - idx - length_bits(UVec{U}))
+    result = idx - leading_zeros(u)
+    return result > 0 ? result : nothing
+end
+
+@inline function Base.argmin(v::UVec{U}) where {U}
+    @boundscheck(isempty(v) && throw_empty_uvec())
+    # Remove length bits
+    u = right_shift(v.x, length_bits(UVec{U}))
+    n = trailing_ones(u) # The zero padding terminates the run even when all elements are true.
+    # If n == length(v), the first unset bit was in the uncoding bits,
+    # so we return 1.
+    return n == length(v) ? 1 : n + 1
+end
+
+@inline function Base.argmax(v::UVec{U}) where {U}
+    @boundscheck(isempty(v) && throw_empty_uvec())
+    # Remove length bits
+    u = right_shift(v.x, length_bits(UVec{U}))
+    # All coding bits are false => return 1
+    iszero(u) && return 1
+    # Lowest set bit
+    return trailing_zeros(u) + 1
+end
