@@ -60,6 +60,49 @@
     end
 end
 
+@testset "Vector replacement across backing widths" begin
+    for U in (UInt8, UInt16, UInt32, UInt64, UInt128)
+        for len in (1, capacity(UVec{U}) ÷ 2, capacity(UVec{U}))
+            for data in (trues(len), falses(len), isodd.(1:len))
+                v = UVec{U}(data)
+                # Unsorted and duplicate indices, including the highest bit.
+                indices = [len, 1, len]
+                items = Bool[1, 1, 0]
+                expected = copy(data)
+                expected[indices] = items
+                @test Base.setindex(v, items, indices) === UVec{U}(expected)
+                mask = isodd.(1:len)
+                items = .!data[mask]
+                expected = copy(data)
+                expected[mask] = items
+                @test Base.setindex(v, items, mask) === UVec{U}(expected)
+            end
+        end
+    end
+end
+
+@testset "Range replacement across backing widths" begin
+    for D in (UInt8, UInt16, UInt32, UInt64, UInt128), S in (UInt8, UInt16, UInt32, UInt64, UInt128)
+        for len in (capacity(UVec{D}) ÷ 2, capacity(UVec{D}))
+            limit = min(len, capacity(UVec{S}))
+            for n in unique((1, limit ÷ 2, limit))
+                for start in unique((1, 1 + (len - n) ÷ 2, len - n + 1))
+                    r = start:(start + n - 1)
+                    for data in (trues(len), isodd.(1:len)), items in (falses(n), trues(n), iseven.(1:n))
+                        v = UVec{D}(data)
+                        expected = copy(data)
+                        expected[r] = items
+                        result = UVec{D}(expected)
+                        @test Base.setindex(v, items, r) === result
+                        @test Base.setindex(v, view(items, :), r) === result
+                        @test Base.setindex(v, UVec{S}(items), r) === result
+                    end
+                end
+            end
+        end
+    end
+end
+
 @testset "Conversion capacity boundaries" begin
     for S in (UInt8, UInt16, UInt32, UInt64, UInt128), D in (UInt8, UInt16, UInt32, UInt64, UInt128)
         len = min(capacity(UVec{S}), capacity(UVec{D}))

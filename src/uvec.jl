@@ -30,7 +30,7 @@ UVec{U}() where {U <: Unsigned} = new_uvec(zero(U))
 
 function UVec{U}(itr) where {U <: Unsigned}
     max_capacity = capacity(UVec{U})
-    shift = length_bits(UVec{U}) % UInt32
+    shift = length_bits(UVec{U})
     u = zero(U)
     n_items = 0
     for item in itr
@@ -38,7 +38,7 @@ function UVec{U}(itr) where {U <: Unsigned}
         n_items += 1
         @boundscheck n_items > max_capacity && throw_full_uvec()
         u |= left_shift(element % U, shift)
-        shift += one(shift)
+        shift += 1
     end
     return new_uvec(u | n_items % U)
 end
@@ -109,7 +109,7 @@ Base.IndexStyle(::Type{<:UVec}) = Base.IndexLinear()
 Base.similar(x::UVec) = BitVector(x)
 
 function inbounds_shift(::Type{T}, i::Int) where {T <: UVec}
-    return (i - 1 + length_bits(T)) % UInt32
+    return i - 1 + length_bits(T)
 end
 
 @inline function Base.getindex(x::UVec, i::Integer)
@@ -121,12 +121,12 @@ end
 function Base.getindex(v::UVec{U}, idx::UnitRange{<:Integer}) where {U <: Unsigned}
     isempty(idx) && return UVec{U}()
     @boundscheck checkbounds(v, idx)
-    fst, lst = (first(idx) % UInt32)::UInt32, (last(idx) % UInt32)::UInt32
+    fst, lst = first(idx) % Int, last(idx) % Int
     # Shift down to remove the first 1:(fst-1) elements
-    u = right_shift(v.x, fst - UInt32(1))
+    u = right_shift(v.x, fst - 1)
     # Mask away bits after lst, and also bits we just shifted into
     # the length region
-    L = lst - fst + UInt32(1)
+    L = lst - fst + 1
     # Mask of L payload bits above the length region
     mask = bitmask(U, L, length_bits(UVec{U}))
     return new_uvec((u & mask) | (L % U))
@@ -208,10 +208,10 @@ function pushfirst(x::T, i1, is...) where {U <: Unsigned, T <: UVec{U}}
 
     # Make a U which stores the new elements in the right position
     u2 = zero(u)
-    shift = length_bits(T) % UInt32
+    shift = length_bits(T)
     for i in (i1, is...)
         u2 |= left_shift((convert(Bool, i)::Bool) % U, shift)
-        shift += one(shift)
+        shift += 1
     end
     # Finally, create the uvec by ORing the old elements, new elements and length together.
     return new_uvec(u | u2 | L)
@@ -238,15 +238,15 @@ true
 function append(v::UVec{U}, itr) where {U}
     L = length(v)
     LB = length_bits(UVec{U})
-    shift = (LB + L) % UInt
-    W = bitwidth(U) % UInt32
+    shift = LB + L
+    W = bitwidth(U)
     u = v.x & ~length_mask(UVec{U})
     for i in itr
         @boundscheck shift == W && throw_full_uvec()
         iT = convert(Bool, i)::Bool
         u |= left_shift(iT % U, shift)
         L += 1
-        shift += one(shift)
+        shift += 1
     end
     return new_uvec(u | (L % U))
 end
@@ -337,12 +337,12 @@ end
 @inline function deleteat(v::T, idx::UnitRange{<:Integer}) where {U <: Unsigned, T <: UVec{U}}
     isempty(idx) && return v
     @boundscheck checkbounds(v, idx)
-    (fst, lst) = ((first(idx) % UInt32)::UInt32, (last(idx) % UInt32)::UInt32)
-    B = length_bits(T) % UInt32
-    L = lst - fst + UInt32(1)
+    (fst, lst) = (first(idx) % Int, last(idx) % Int)
+    B = length_bits(T)
+    L = lst - fst + 1
 
     # Get U with elements before fst, and updated length
-    mask = bitmask(U, fst + B - one(UInt32))
+    mask = bitmask(U, fst + B - 1)
     u1 = (v.x & mask) - (L % U)
 
     # Shift the suffix into place, then discard everything below it. Masking
@@ -420,6 +420,79 @@ end
     shift = inbounds_shift(typeof(x), i)
     u = x.x & ~singlebit(U, shift)
     u |= left_shift(vT % U, shift)
+    return new_uvec(u)
+end
+
+@noinline function throwdimmismatch(nindices::Integer, nitems::Integer)
+    throw(DimensionMismatch("Tried to assign $(nitems) items to $(nindices) indices"))
+end
+
+function Base.setindex(
+        v::UVec{U},
+        items::AbstractVector,
+        index::UnitRange{<:Integer}
+    ) where {U <: Unsigned}
+    @boundscheck checkbounds(v, index)
+    Lt = length(items)
+    Li = length(index)
+    @boundscheck(Li == Lt || throwdimmismatch(Li, Lt))
+    iszero(Li) && return v
+    return _setindex(v, items, index, Li % Int)
+end
+
+function _setindex(
+        v::UVec{U},
+        items::AbstractVector,
+        index::UnitRange,
+        Li::Int,
+    ) where {U <: Unsigned}
+    # Shift is the left shift up to first bit to replace
+    shift = inbounds_shift(UVec{U}, first(index) % Int)
+    # Mask out all selected bits
+    u = v.x & ~bitmask(U, Li, shift)
+    # Fill them in manually
+    for item in items
+        vT = convert(Bool, item)::Bool
+        u |= left_shift(vT % U, shift)
+        shift += 1
+    end
+    return new_uvec(u)
+end
+
+function _setindex(
+        v::UVec{D},
+        items::UVec{S},
+        index::UnitRange,
+        Li::Int,
+    ) where {S <: Unsigned, D <: Unsigned}
+    # Shift in destination up to first bit to replace
+    dshift = inbounds_shift(UVec{D}, first(index) % Int)
+    # Mask out all selected bits in destination
+    u = v.x & ~bitmask(D, Li, dshift)
+    # Extract first Li coding bits of `items`
+    payload = (items.x >> length_bits(UVec{S})) & bitmask(S, Li)
+    # Shift them into place and return
+    return new_uvec(u | left_shift(payload % D, dshift))
+end
+
+function Base.setindex(
+        v::UVec{U},
+        items,
+        indices::AbstractVector{<:Integer}
+    ) where {U <: Unsigned}
+    @boundscheck checkbounds(v, indices)
+    # Normalize Boolean masks to their selected positions without allocating
+    # an index vector. Ordinary integer vectors pass through unchanged.
+    indices = Base.to_index(indices)
+    (nitems, nindices) = (length(items), length(indices))
+    @boundscheck(nitems == nindices || throwdimmismatch(nindices, nitems))
+    u = v.x
+    for (item, index) in zip(items, indices)
+        vT = convert(Bool, item)::Bool
+        shift = inbounds_shift(UVec{U}, index % Int)
+        u &= ~singlebit(U, shift)
+        u |= left_shift(vT % U, shift)
+    end
     return new_uvec(u)
 end
 
