@@ -76,7 +76,7 @@ end
 @inline function length_bits(::Type{T}) where {U, T <: UVec{U}}
     total_bits = bitwidth(U)::Int
     candidate = bitwidth(Int) - leading_zeros(total_bits) - 1
-    needs_more = left_shift(1, candidate % UInt32) - 1 < total_bits - candidate
+    needs_more = bitmask(UInt, candidate) < total_bits - candidate
     return candidate + needs_more
 end
 
@@ -97,7 +97,7 @@ julia> capacity(UVec{UInt32})
 capacity(::Type{T}) where {U <: Unsigned, T <: UVec{U}} = bitwidth(U) - length_bits(T)
 
 @inline function length_mask(::Type{T}) where {U, T <: UVec{U}}
-    return left_shift(one(U), length_bits(T) % UInt) - one(U)
+    return bitmask(U, length_bits(T))
 end
 
 Base.size(x::UVec) = (length(x),)
@@ -106,6 +106,7 @@ Base.isempty(x::UVec) = iszero(x.x)
 Base.copy(x::UVec) = x
 Base.empty(::UVec{U}) where {U} = UVec{U}()
 Base.IndexStyle(::Type{<:UVec}) = Base.IndexLinear()
+Base.similar(x::UVec) = BitVector(x)
 
 function inbounds_shift(::Type{T}, i::Int) where {T <: UVec}
     return (i - 1 + length_bits(T)) % UInt32
@@ -127,7 +128,7 @@ function Base.getindex(v::UVec{U}, idx::UnitRange{<:Integer}) where {U <: Unsign
     # the length region
     L = lst - fst + UInt32(1)
     # Mask of L lower bits
-    mask = left_shift(one(U), L) - one(U)
+    mask = bitmask(U, L)
     mask = left_shift(mask, length_bits(UVec{U}) % UInt32) # shift into position
     return new_uvec((u & mask) | (L % U))
 end
@@ -284,7 +285,7 @@ function insert(v::T, index::Integer, item) where {U <: Unsigned, T <: UVec{U}}
     # We know index is inbounds, so we truncate without checking
     idx = (index % Int)::Int
     shift = inbounds_shift(T, idx)
-    mask = left_shift(one(U), shift) - one(U)
+    mask = bitmask(U, shift)
     # Moved elements: Every element at or after index and shift it upwards
     u1 = (v.x & ~mask) << 1
     # Unmoved elements: All elements before index are not moved. Length is updated
@@ -323,7 +324,7 @@ ERROR: BoundsError: attempt to access 4-element UVec{UInt8} at index [4:5]
     i = (idx % Int)::Int
     shift = inbounds_shift(T, i)
     # Get a U with length decremented by one, and only all elements before idx
-    mask = left_shift(one(U), shift) - one(U)
+    mask = bitmask(U, shift)
     u = (v.x & mask) - one(U)
 
     # Select elements after idx and shift them down into place.
@@ -342,7 +343,7 @@ end
     L = lst - fst + UInt32(1)
 
     # Get U with elements before fst, and updated length
-    mask = left_shift(one(U), fst + B - one(UInt32)) - one(U)
+    mask = bitmask(U, fst + B - one(UInt32))
     u1 = (v.x & mask) - (L % U)
 
     # Shift the suffix into place, then discard everything below it. Masking
@@ -401,7 +402,7 @@ function Base.reverse(v::UVec{U}, start::Integer, stop::Integer) where {U}
 
     # Extract the bits that should be reversed, and reverse them with bitreverse
     L = lst - fst + 1
-    mask = left_shift(one(U), L % UInt32) - one(U)
+    mask = bitmask(U, L)
     shift = length_bits(UVec{U}) + fst - 1
     mask = left_shift(mask, shift % UInt32)
     u = bitreverse(v.x & mask)
@@ -446,7 +447,7 @@ function Base.circshift(x::UVec{U}, i::Integer) where {U <: Unsigned}
 
     # Above shifting moved some bits beyond the coding bits
     # so remove those
-    coding_mask = left_shift(one(U), L % UInt) - one(U)
+    coding_mask = bitmask(U, L)
     coding_mask = left_shift(coding_mask, length_bits(UVec{U}) % UInt)
     result &= coding_mask
 
