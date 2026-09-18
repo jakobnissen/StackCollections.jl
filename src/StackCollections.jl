@@ -22,10 +22,20 @@ end
 
 bitwidth(::U) where {U <: Integer} = bitwidth(U)
 
+# Set only the zero-based bit position i, with the same wrapping as left_shift.
+@inline singlebit(::Type{U}, i::Integer) where {U <: Unsigned} = left_shift(one(U), i)
+
+# Return the zero-based position of the highest set bit, or -1 for zero.
+@inline highestbit(x::Integer) = bitwidth(x) - leading_zeros(x) - 1
+
 # Get a bitmask where only the lowest mod(n, bitwidth(U)) are set
 function bitmask(::Type{U}, n::Integer) where {U <: Unsigned}
-    o = one(U)
-    return left_shift(o, n) - o
+    return singlebit(U, n) - one(U)
+end
+
+# Shift the low-bit mask into position, with the same wrapping as left_shift.
+@inline function bitmask(::Type{U}, n::Integer, offset::Integer) where {U <: Unsigned}
+    return left_shift(bitmask(U, n), offset)
 end
 
 # Test a zero-based bit position, with the same wrapping as right_shift.

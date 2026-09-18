@@ -75,7 +75,7 @@ end
 # is inferred as having total effects.
 @inline function length_bits(::Type{T}) where {U, T <: UVec{U}}
     total_bits = bitwidth(U)::Int
-    candidate = bitwidth(Int) - leading_zeros(total_bits) - 1
+    candidate = highestbit(total_bits)
     needs_more = bitmask(UInt, candidate) < total_bits - candidate
     return candidate + needs_more
 end
@@ -127,9 +127,8 @@ function Base.getindex(v::UVec{U}, idx::UnitRange{<:Integer}) where {U <: Unsign
     # Mask away bits after lst, and also bits we just shifted into
     # the length region
     L = lst - fst + UInt32(1)
-    # Mask of L lower bits
-    mask = bitmask(U, L)
-    mask = left_shift(mask, length_bits(UVec{U}) % UInt32) # shift into position
+    # Mask of L payload bits above the length region
+    mask = bitmask(U, L, length_bits(UVec{U}))
     return new_uvec((u & mask) | (L % U))
 end
 
@@ -357,7 +356,7 @@ end
     @boundscheck(isempty(x) && throw_empty_uvec())
     L = length(x)
     shift = inbounds_shift(T, L)
-    mask = ~left_shift(one(U), shift)
+    mask = ~singlebit(U, shift)
     element = testbit(x.x, shift)
     return (new_uvec((x.x & mask) - one(U)), element)
 end
@@ -402,9 +401,8 @@ function Base.reverse(v::UVec{U}, start::Integer, stop::Integer) where {U}
 
     # Extract the bits that should be reversed, and reverse them with bitreverse
     L = lst - fst + 1
-    mask = bitmask(U, L)
     shift = length_bits(UVec{U}) + fst - 1
-    mask = left_shift(mask, shift % UInt32)
+    mask = bitmask(U, L, shift)
     u = bitreverse(v.x & mask)
 
     # Reversing bits may have shifted them up or down. E.g. an integer
@@ -420,7 +418,7 @@ end
     vT = convert(Bool, v)::Bool
     i = (i % Int)::Int
     shift = inbounds_shift(typeof(x), i)
-    u = x.x & ~left_shift(one(U), shift)
+    u = x.x & ~singlebit(U, shift)
     u |= left_shift(vT % U, shift)
     return new_uvec(u)
 end
@@ -447,8 +445,7 @@ function Base.circshift(x::UVec{U}, i::Integer) where {U <: Unsigned}
 
     # Above shifting moved some bits beyond the coding bits
     # so remove those
-    coding_mask = bitmask(U, L)
-    coding_mask = left_shift(coding_mask, length_bits(UVec{U}) % UInt)
+    coding_mask = bitmask(U, L, length_bits(UVec{U}))
     result &= coding_mask
 
     # Now add length back in and return

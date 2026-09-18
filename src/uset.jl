@@ -74,7 +74,7 @@ end
 # contains an element not representable by destination type.
 @inline function USet{D}(s::USet{S}) where {D, S}
     @boundscheck if bitwidth(D) < bitwidth(S) && !isempty(s)
-        largest = (bitwidth(S) - leading_zeros(s.x) - 1) % UInt32
+        largest = highestbit(s.x) % UInt32
         largest > maximum_member(USet{D}) && throw_uset_oob(USet{D}, largest)
     end
     return new_uset(s.x % D)
@@ -189,7 +189,7 @@ end
 
 function push_inbounds(x::USet{U}, i::UInt32) where {U}
     u = x.x
-    u |= left_shift(one(u), i % UInt32)
+    u |= singlebit(U, i)
     return new_uset(u)
 end
 
@@ -210,8 +210,8 @@ end
 @inline function pop(x::USet{U}) where {U}
     @boundscheck(isempty(x) && throw_empty_uset(typeof(x)))
     u = x.x
-    element = (bitwidth(u) - leading_zeros(u) - 1) % UInt32
-    new_set = new_uset(u ⊻ left_shift(one(u), element))
+    element = highestbit(u) % UInt32
+    new_set = new_uset(u ⊻ singlebit(U, element))
     return (new_set, element)
 end
 
@@ -264,7 +264,7 @@ true
 """
 function pop(x::USet{U}, i::Integer) where {U}
     can_contain(x, i) || return x
-    mask = ~left_shift(one(U), i % UInt32)
+    mask = ~singlebit(U, i % UInt32)
     return new_uset(x.x & mask)
 end
 
@@ -363,7 +363,7 @@ end
 
 @inline function Base.last(x::USet)
     @boundscheck isempty(x) && throw_empty_uset(typeof(x))
-    return (bitwidth(x.x) - leading_zeros(x.x) - 1) % UInt32
+    return highestbit(x.x) % UInt32
 end
 
 Base.@propagate_inbounds Base.minimum(x::USet) = first(x)
