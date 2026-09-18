@@ -60,6 +60,8 @@ end
     end
 
     @testset "Iteration and indexing" begin
+        @test IndexStyle(typeof(v)) === IndexLinear()
+        @test eachindex(v) == 1:4
         @test eltype(v) === Bool
         @test collect(v) == Bool[1, 0, 1, 1]
         @test length(v) === 4
@@ -85,6 +87,18 @@ end
             @test_throws BoundsError v[i]
         end
         @test_throws BoundsError UVec{UInt8}()[1]
+    end
+
+    @testset "copy and empty" begin
+        for U in (UInt8, UInt16, UInt32, UInt64, UInt128)
+            T = UVec{U}
+            for data in (Bool[], [false], [true], isodd.(1:capacity(T)))
+                original = T(data)
+                @test copy(original) === original
+                @test empty(original) === T()
+                @test IndexStyle(T) === IndexLinear()
+            end
+        end
     end
 
     @testset "Range indexing" begin
@@ -182,6 +196,13 @@ end
         @test_throws ArgumentError pushfirst(UVec{UInt8}(falses(5)), false)
         @test_throws InexactError pushfirst(v, 2)
         @test_throws MethodError pushfirst(v, :invalid)
+
+        @test pushfirst(v, 0, 1.0) === UVec{UInt8}([0, 1, 1, 0, 1])
+        @test pushfirst(UVec{UInt8}(), 0, 1, 0, 1, 0) === UVec{UInt8}([0, 1, 0, 1, 0])
+        @test_throws ArgumentError pushfirst(UVec{UInt8}(falses(5)), false, true)
+        @test_throws InexactError pushfirst(v, 2, false)
+        @test_throws MethodError pushfirst(v, false, :invalid)
+        @test_throws InexactError @inbounds pushfirst(v, false, 2)
     end
 
     @testset "append" begin
@@ -239,6 +260,7 @@ end
         end
         @test_throws BoundsError Base.setindex(UVec{UInt8}(), true, 1)
         @test_throws InexactError Base.setindex(v, 2, 1)
+        @test_throws BoundsError Base.setindex(v, 2, 0)
         @test_throws MethodError Base.setindex(v, :invalid, 1)
     end
 end
@@ -259,6 +281,13 @@ end
         @test reverse(UVec{UInt8}()) === UVec{UInt8}()
         @test reverse(UVec{UInt8}([false])) === UVec{UInt8}([false])
         @test reverse(UVec{UInt8}([true])) === UVec{UInt8}([true])
+        @test reverse(v, 2, 4) === UVec{UInt8}([1, 1, 0, 0, 0])
+        @test reverse(v, 1, length(v)) === reverse(v)
+        @test reverse(v, 3, 3) === v
+        @test reverse(v, 4, 2) === v
+        @test reverse(UVec{UInt8}(), 1, 0) === UVec{UInt8}()
+        @test (@inbounds reverse(v, 2, 4)) === UVec{UInt8}([1, 1, 0, 0, 0])
+        @test v === UVec{UInt8}([1, 0, 0, 1, 0])
     end
 
     @testset "circshift" begin
@@ -277,8 +306,11 @@ end
             )
             shift = Int(mod(i, length(v)))
             @test circshift(v, i) === UVec{UInt8}(circshift(collect(v), shift))
+            @test circshift(v, (i,)) === circshift(v, i)
             @test circshift(UVec{UInt8}(), i) === UVec{UInt8}()
+            @test circshift(UVec{UInt8}(), (i,)) === UVec{UInt8}()
             @test circshift(UVec{UInt8}([true]), i) === UVec{UInt8}([true])
+            @test circshift(UVec{UInt8}([true]), (i,)) === UVec{UInt8}([true])
         end
     end
 end

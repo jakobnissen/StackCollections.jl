@@ -66,6 +66,20 @@ end
 @testset "Basic operations" begin
     s = USet{UInt8}([7, 0, 3, 1])
 
+    @testset "show" begin
+        @test sprint(show, USet{UInt8}()) == "USet{UInt8}([])"
+        @test sprint(show, USet{UInt16}([15])) == "USet{UInt16}([15])"
+        @test sprint(show, s) == "USet{UInt8}([0, 1, 3, 7])"
+        # Exactly twenty members are shown in full; larger sets show the
+        # first and last ten members with an ellipsis between them.
+        @test sprint(show, USet{UInt32}(0:19)) ==
+            "USet{UInt32}([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19])"
+        @test sprint(show, USet{UInt32}(0:20)) ==
+            "USet{UInt32}([0, 1, 2, 3, 4, 5, 6, 7, 8, 9 … 11, 12, 13, 14, 15, 16, 17, 18, 19, 20])"
+        @test sprint(show, USet{UInt128}(0:2:126)) ==
+            "USet{UInt128}([0, 2, 4, 6, 8, 10, 12, 14, 16, 18 … 108, 110, 112, 114, 116, 118, 120, 122, 124, 126])"
+    end
+
     @testset "Equality" begin
         # Equality is independent of backing width and works with ordinary
         # sets, while differing members make the sets unequal.
@@ -181,6 +195,17 @@ end
         @test pop(s, 4) === s
         @test pop(s, -1) === s
         @test pop(s, 8) === s
+        @test pop(s, 0) === USet{UInt8}([3, 7])
+        @test pop(s, 7) === USet{UInt8}([0, 3])
+        @test pop(USet{UInt8}([7]), 7) === USet{UInt8}()
+        @test pop(USet{UInt8}(), 0) === USet{UInt8}()
+        for I in (Int8, UInt8, Int128, UInt128, BigInt)
+            @test pop(s, I(3)) === USet{UInt8}([0, 7])
+        end
+        for i in (typemin(Int), typemax(UInt128), big(2)^128 + 3, -big(2)^128 + 3)
+            @test pop(s, i) === s
+            @test (@inbounds pop(s, i)) === s
+        end
         @test s == USet{UInt8}([0, 3, 7])
     end
 end
@@ -274,11 +299,16 @@ end
         @test issubset(USet{UInt8}([1, 3]), Set([1, 3, 8]))
     end
 end
+
 @testset "Conversion and raw storage" begin
     for S in (UInt8, UInt16, UInt32, UInt64, UInt128)
-        for raw in (zero(S), one(S), typemax(S), one(S) << (8sizeof(S) - 1))
+        for raw in (zero(S), one(S), S(0xa5), typemax(S), one(S) << (8sizeof(S) - 1))
             s = uset_from_integer(raw)
+            @test s isa USet{S}
+            @test collect(s) == UInt32[i for i in 0:(8sizeof(S) - 1) if isodd(raw >> i)]
             @test Integer(s) === raw
+            @test reinterpret(S, s) === raw
+            @test uset_from_integer(Integer(s)) === s
             @test copy(s) === s
             @test convert(USet{S}, s) === s
             for D in (UInt8, UInt16, UInt32, UInt64, UInt128)
@@ -290,4 +320,7 @@ end
             end
         end
     end
+    @test Integer(USet{UInt8}([0, 3, 5])) === 0x29
+    @test uset_from_integer(0x05) === USet{UInt8}([0, 2])
+    @test_throws MethodError uset_from_integer(5)
 end
