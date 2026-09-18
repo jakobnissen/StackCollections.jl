@@ -168,13 +168,12 @@ uset_from_integer(u::Unsigned) = new_uset(u)
 function Base.iterate(x::USet{U}, state::U = x.x) where {U}
     iszero(state) && return nothing
     tz = trailing_zeros(state)
-    # Bithack to clear lowest set bit
-    return (tz % UInt32, state & (state - one(state)))
+    return (tz % UInt32, clearlowest(state))
 end
 
 function Base.in(i::Integer, x::USet)
     can_contain(x, i) || return false
-    return isodd(right_shift(x.x, i % UInt32))
+    return testbit(x.x, i % UInt32)
 end
 
 Base.checkbounds(::Type{Bool}, x::USet, i::Integer) = can_contain(x, i)
@@ -220,7 +219,7 @@ end
     @boundscheck(isempty(x) && throw_empty_uset(typeof(x)))
     u = x.x
     element = trailing_zeros(u) % UInt32
-    new_set = new_uset(u & (u - one(u))) # Clear lowest bit
+    new_set = new_uset(clearlowest(u))
     return (new_set, element)
 end
 

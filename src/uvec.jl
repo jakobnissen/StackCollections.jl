@@ -115,7 +115,7 @@ end
 @inline function Base.getindex(x::UVec, i::Integer)
     @boundscheck Base.checkbounds(x, i)
     i = (i % Int)::Int
-    return isodd(right_shift(x.x, inbounds_shift(typeof(x), i)))
+    return testbit(x.x, inbounds_shift(typeof(x), i))
 end
 
 function Base.getindex(v::UVec{U}, idx::UnitRange{<:Integer}) where {U <: Unsigned}
@@ -358,7 +358,7 @@ end
     L = length(x)
     shift = inbounds_shift(T, L)
     mask = ~left_shift(one(U), shift)
-    element = isodd(right_shift(x.x, inbounds_shift(T, L)))
+    element = testbit(x.x, shift)
     return (new_uvec((x.x & mask) - one(U)), element)
 end
 
@@ -366,7 +366,7 @@ end
     @boundscheck(isempty(x) && throw_empty_uvec())
     mask = length_mask(T)
     # Get first element
-    element = isodd(right_shift(x.x, length_bits(T) % UInt))
+    element = testbit(x.x, length_bits(T) % UInt)
     # Extract out length
     new_len = (x.x & mask) - one(U)
     # Shift down to pop out first element, and make sure to remove

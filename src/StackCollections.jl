@@ -28,6 +28,12 @@ function bitmask(::Type{U}, n::Integer) where {U <: Unsigned}
     return left_shift(o, n) - o
 end
 
+# Test a zero-based bit position, with the same wrapping as right_shift.
+@inline testbit(x::Integer, i::Integer) = isodd(right_shift(x, i))
+
+# Clear the lowest set bit, leaving zero unchanged.
+@inline clearlowest(x::Unsigned) = x & (x - one(x))
+
 """
     pop(collection::Union{Uset, UVec}) -> (new_collection, item)
 
