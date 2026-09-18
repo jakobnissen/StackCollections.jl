@@ -174,13 +174,13 @@ end
         @test_throws ArgumentError popfirst(USet{UInt8}())
     end
 
-    @testset "delete" begin
-        # delete is immutable and treats absent or unrepresentable members as
+    @testset "pop member" begin
+        # pop(s, i) is immutable and treats absent or unrepresentable members as
         # no-ops.
-        @test delete(s, 3) == USet{UInt8}([0, 7])
-        @test delete(s, 4) === s
-        @test delete(s, -1) === s
-        @test delete(s, 8) === s
+        @test pop(s, 3) == USet{UInt8}([0, 7])
+        @test pop(s, 4) === s
+        @test pop(s, -1) === s
+        @test pop(s, 8) === s
         @test s == USet{UInt8}([0, 3, 7])
     end
 end
@@ -272,5 +272,22 @@ end
         @test !issubset(a, USet{UInt8}([1, 3]))
         @test issubset(USet{UInt8}(), a)
         @test issubset(USet{UInt8}([1, 3]), Set([1, 3, 8]))
+    end
+end
+@testset "Conversion and raw storage" begin
+    for S in (UInt8, UInt16, UInt32, UInt64, UInt128)
+        for raw in (zero(S), one(S), typemax(S), one(S) << (8sizeof(S) - 1))
+            s = uset_from_integer(raw)
+            @test Integer(s) === raw
+            @test copy(s) === s
+            @test convert(USet{S}, s) === s
+            for D in (UInt8, UInt16, UInt32, UInt64, UInt128)
+                if isempty(s) || maximum(s) < 8sizeof(D)
+                    @test convert(USet{D}, s) === USet{D}(collect(s))
+                else
+                    @test_throws ArgumentError convert(USet{D}, s)
+                end
+            end
+        end
     end
 end

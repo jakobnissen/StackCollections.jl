@@ -14,10 +14,10 @@ or variadic arguments, whose loops use the compiler's normal inlining heuristics
 Membership, deletion, intersection and set difference still handle out-of-range
 integers normally under `@inbounds`.
 
-Mutable operations are not supported; use `push` `pop` and `delete`
+Mutable operations are not supported; use `push`, `pop` and `popfirst`
 instead of the corresponding mutable Base operations.
 
-The layour of this type is guaranteed to be identical to a `U`,
+The layout of this type is guaranteed to be identical to a `U`,
 where the bits from LSB to MSB represent the presence of the integers
 zero and upwards. I.e. `USet{UInt8}([0, 3, 5])` is guaranteed to have the same
 memory layout as `0x29`.
@@ -53,11 +53,11 @@ end
 function Base.show(io::IO, x::USet)
     v = collect(x)
     inner = if length(v) > 20
-        join(v[1:10], ", ") * " … " * join(v[end-9:end], ", ")
+        join(v[1:10], ", ") * " … " * join(v[(end - 9):end], ", ")
     else
         join(v, ", ")
     end
-    print(io, typeof(x), "([", inner, "])")
+    return print(io, typeof(x), "([", inner, "])")
 end
 
 @noinline function throw_uset_oob(::Type{T}, i::Integer) where {T}
@@ -93,13 +93,14 @@ end
 
 # N.B: We only convert from USet and not AbstractSet{<:Integer} in general
 # because I want conversion here to be fast, as convert is called implicitly
-Base.convert(::Type{USet{D}}, x::Type{USet{S}}) where {D, S} = USet{D}(x)
+Base.convert(::Type{USet{D}}, x::USet) where {D} = USet{D}(x)
+Base.convert(::Type{USet{U}}, x::USet{U}) where {U} = x
 
 """
     maximum_member(::Type{<:USet{U}})::UInt32
 
 Return the maximum member that can be contained by a `USet{U}`.
-This value is compile-time constant, and is equal to `2 ^ N - 1`,
+This value is compile-time constant, and is equal to `N - 1`,
 where `N` is the bitsize of `U`.
 
 ```jldoctest
@@ -118,8 +119,7 @@ maximum_member(::Type{USet{U}}) where {U} = (bitwidth(U) - 1) % UInt32
 Return whether a `USet{U}` can contain an `i`, by checking if `i`
 is in `0:maximum_member(USet{U})`.
 
-jldoctest
-```
+```jldoctest
 julia> can_contain(USet{UInt32}, 55)
 false
 
@@ -253,13 +253,13 @@ Construct a new `USet` equal to `x`, except without `i` as an element.
 ```jldoctest
 julia> s = USet{UInt8}([0, 2, 3, 6]);
 
-julia> delete(s, 1) === s
+julia> pop(s, 1) === s
 true
 
-julia> delete(s, 3) == Set([0, 2, 6])
+julia> pop(s, 3) == Set([0, 2, 6])
 true
 
-julia> delete(s, 99999) === s
+julia> pop(s, 99999) === s
 true
 ```
 """
