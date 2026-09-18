@@ -4,21 +4,18 @@
 An immutable, sorted bit set backed by an integer of type `U`.
 Can contain the integers `UInt32(0):UInt32(B - 1)` when backed by an
 integer consisting of `B` bits.
-Construct from an iterable of integers.
+
+Construct from an iterable of integers, or an empty set with `USet{U}()`.
 
 Operations that would introduce an unrepresentable member, or require a
 nonempty set when given an empty one, throw an `ArgumentError`. These checks
-can be disabled locally with `@inbounds`; the caller must ensure the operation
-is valid. Check elision is not guaranteed for operations consuming iterables
-or variadic arguments, whose loops use the compiler's normal inlining heuristics.
-Membership, deletion, intersection and set difference still handle out-of-range
-integers normally under `@inbounds`.
+can sometimes be disabled locally with `@inbounds`.
 
 Mutable operations are not supported; use `push`, `pop` and `popfirst`
 instead of the corresponding mutable Base operations.
 
-The layout of this type is guaranteed to be identical to a `U`,
-where the bits from LSB to MSB represent the presence of the integers
+The memory of this type is guaranteed to be identical to a `U`,
+where set bits from LSB to MSB represent the presence of the integers
 zero and upwards. I.e. `USet{UInt8}([0, 3, 5])` is guaranteed to have the same
 memory layout as `0x29`.
 Obtain the equivalent integer with `Integer(s)`. This is guaranteed to be
@@ -149,6 +146,8 @@ For bitstype `U`, it is guaranteed that `Integer(uset_from_integer(u)) === u`.
 The resulting `USet` contains the elements represented by the set
 bits in `u`, from `UInt32(0)` being the LSB, and `UInt32(bitsizeof(U) - 1)`
 is the MSB.
+
+This operation is guaranteed to be optimizable to a noop.
 
 ```jldoctest
 julia> u = 0x50ae; s = uset_from_integer(u);

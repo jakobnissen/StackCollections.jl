@@ -53,6 +53,9 @@ removed. The new collection and the removed element is returned as a tuple.
 If collection is empty, throw an `ArgumentError`. The check can be disabled locally
 with `@inbounds`, similar to `BoundsError`s.
 
+See also: [`popfirst`](@ref), [`push`](@ref), [`deleteat`](@ref)
+
+# Examples
 ```jldoctest
 julia> (v2, element) = pop(UVec{UInt16}([1, 0]));
 
@@ -74,6 +77,9 @@ removed. The new collection and the removed element is returned as a tuple.
 If collection is empty, throw an `ArgumentError`. The check can be disabled locally
 with `@inbounds`, similar to `BoundsError`s.
 
+See also: [`pop`](@ref), [`push`](@ref), [`deleteat`](@ref)
+
+# Examples
 ```jldoctest
 julia> (v2, element) = popfirst(UVec{UInt16}([1, 0]));
 

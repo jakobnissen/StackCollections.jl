@@ -7,12 +7,10 @@ can be queried by `capacity(T)`.
 
 Operations that exceed the maximum capacity, or require a nonempty vector
 when given an empty one, throw an `ArgumentError`. Invalid indices throw a
-`BoundsError`. These checks can be disabled locally with `@inbounds`; the
-caller must ensure the operation is valid. Element conversions remain checked.
-Check elision is not guaranteed for iterable construction, `append`, or variadic
-`push`, whose loops use the compiler's normal inlining heuristics.
+`BoundsError`. These checks may sometimes be disabled locally with `@inbounds`
 
-Mutable operations are not supported; use `push`, `pop`, and `Base.setindex`
+Mutable operations are not supported; use `push`, `pushfirst`, `pop`, `popfirst`,
+`deleteat`, and `Base.setindex`
 instead of the corresponding mutable Base operations.
 """
 struct UVec{U <: Unsigned} <: AbstractVector{Bool}
@@ -66,7 +64,7 @@ UVec{U}(x::UVec{U}) where {U <: Unsigned} = x
 function unused_bits(x::UVec{U}) where {U}
     return bitwidth(U) - length_bits(UVec{U}) - length(x)
 end
-
+maximum
 @noinline throw_full_uvec() = throw(ArgumentError("UVec at maximum size"))
 @noinline throw_empty_uvec() = throw(ArgumentError("UVec empty"))
 
@@ -86,6 +84,7 @@ end
 Compute the maximum number of elements a `UVec{U}` can contain.
 This computation is compile time constant.
 
+# Examples
 ```jldoctest
 julia> capacity(UVec{UInt8})
 5
@@ -135,13 +134,26 @@ end
 Base.getindex(v::UVec, ::Colon) = v
 
 """
-    push(v::UVec{U}, i)::UVec{U}
+    push(v::UVec{U}, i1, is...)::UVec{U}
 
-Convert `i` to `Bool`, and return a new `UVec{U}` identical to `v` but
-with the converted `i` appended to the end.
+Convert every element of `(i1, is...)` to `Bool`, then return a new `UVec{U}`
+based on `v`, but with the converted elements, in order, appended to the end.
 
 Throw an `ArgumentError` if `v` is already at maximum capacity.
 The check can be disabled locally with `@inbounds`, similar to `BoundsError`s.
+
+# See also: [`pop`](@ref), [`pushfirst`](@ref)
+
+# Examples
+```jldoctest
+julia> v = UVec{UInt32}([1, 1, 0, 1, 0]);
+
+julia> push(v, 0x01) == [1, 1, 0, 1, 0, 1]
+true
+
+julia> push(v, 0x01, 0, true) == [1, 1, 0, 1, 0, 1, 0, 1]
+true
+```
 """
 @inline function push(x::T, i) where {U <: Unsigned, T <: UVec{U}}
     b = convert(Bool, i)::Bool
@@ -160,14 +172,17 @@ function push(x::T, i, is...) where {U <: Unsigned, T <: UVec{U}}
 end
 
 """
-    pushfirst(v::UVec{U}, i...)::UVec{U}
+    pushfirst(v::UVec{U}, i1, is...)::UVec{U}
 
-Convert every element of `i` to `Bool`, then return a new `UVec{U}`
+Convert every element of `(i1, is...)` to `Bool`, then return a new `UVec{U}`
 with the content of `v`, but with the converted elements in order, at the beginning,
 and all preexisting elements shifted back.
 Throw an `ArgumentError` if `v` is already at max capacity.
 The check can be disabled locally with `@inbounds`, similar to `BoundsError`s.
 
+See also: [`push`](@ref)
+
+# Examples
 ```jldoctest
 julia> v = UVec{UInt8}([1, 0, 1, 1]);
 
@@ -223,6 +238,9 @@ end
 Convert each element of `itr` to `Bool`,
 and push them, in order, to a new copy of `v`, which is returned.
 
+See also: [`push`](@ref), [`insert`](@ref)
+
+# Examples
 ```jldoctest
 julia> v = UVec{UInt16}([1, 0]);
 
@@ -259,6 +277,8 @@ Convert `item` to `Bool`, then return a new `UVec{U}` based on `v`, but with the
 The elements at, or after `idx` is shifted one index up.
 The index `idx` must be in `1:length(v)+1`. Throws a `BoundsError` if `idx` is out of bounds.
 Throw an `ArgumentError` if `v` is at capacity. Both are disabled with `@inbounds`.
+
+See also: [`push`](@ref), [`deleteat`](@ref), [`append`](@ref)
 
 # Examples
 ```jldoctest
@@ -302,6 +322,8 @@ Return a new `UVec` based on `v`, but with the index or indices `idx` removed,
 and all subsequent element shifted downwards to fill the deleted elements.
 
 Throw a `BoundsError` if `idx` is out of bounds for `v`. This can be disabled with `@inbounds`.
+
+See also: [`pop`](@ref), [`popfirst`](@ref), [`insert`](@ref)
 
 # Examples
 ```jldoctest
