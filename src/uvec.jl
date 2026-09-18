@@ -10,7 +10,7 @@ when given an empty one, throw an `ArgumentError`. Invalid indices throw a
 `BoundsError`. These checks may sometimes be disabled locally with `@inbounds`
 
 Mutable operations are not supported; use `push`, `pushfirst`, `pop`, `popfirst`,
-`deleteat`, and `Base.setindex`
+`deleteat`, and `setindex`
 instead of the corresponding mutable Base operations.
 """
 struct UVec{U <: Unsigned} <: AbstractVector{Bool}
@@ -435,7 +435,38 @@ function Base.reverse(v::UVec{U}, start::Integer, stop::Integer) where {U}
     return new_uvec((v.x & ~mask) | (u >> downshift))
 end
 
-@inline function Base.setindex(x::UVec{U}, v, i::Integer) where {U}
+"""
+    setindex(v::UVec{U}, item, indices::Integer)::UVec{U}
+    setindex(v::UVec{U}, items, indices::AbstractVector{<:Integer})::UVec{U}
+
+Return a new `UVec{U}` based on `v`, but with the elements at `indices`
+set to `items`.
+The n'th element `items` are converted to `Bool`, then set at the index in the
+returned `UVec` given by the n'th element of `items`.
+
+Throw a `BoundsError` if any index is not an existing index of `v`.
+Else, if `indices` and `items` do not have the same number of elements,
+a `DimensionMismatch` error is thrown.
+These errors may be elided with `@inbounds`.
+
+See also:
+
+# Examples
+```jldoctest
+julia> v = UVec{UInt64}([1, 1, 1, 1, 1, 1, 1, 1, 1]);
+
+julia> v2 = setindex(v, [0, 1, 0, 1, 0], 3:7); println(v2)
+Bool[1, 1, 0, 1, 0, 1, 0, 1, 1]
+
+julia> v2 == v # v is unchanged
+false
+
+julia> setindex(v, [1, 0, 1], 2:3)
+ERROR: DimensionMismatch: Tried to assign 3 items to 2 indices
+[...]
+```
+"""
+@inline function setindex(x::UVec{U}, v, i::Integer) where {U}
     @boundscheck Base.checkbounds(x, i)
     vT = convert(Bool, v)::Bool
     i = (i % Int)::Int
@@ -449,7 +480,7 @@ end
     throw(DimensionMismatch("Tried to assign $(nitems) items to $(nindices) indices"))
 end
 
-function Base.setindex(
+function setindex(
         v::UVec{U},
         items::AbstractVector,
         index::UnitRange{<:Integer}
@@ -497,7 +528,7 @@ function _setindex(
     return new_uvec(u | left_shift(payload % D, dshift))
 end
 
-function Base.setindex(
+function setindex(
         v::UVec{U},
         items,
         indices::AbstractVector{<:Integer}

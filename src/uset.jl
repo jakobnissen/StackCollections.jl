@@ -93,21 +93,6 @@ end
 Base.convert(::Type{USet{D}}, x::USet) where {D} = USet{D}(x)
 Base.convert(::Type{USet{U}}, x::USet{U}) where {U} = x
 
-"""
-    maximum_member(::Type{<:USet{U}})::UInt32
-
-Return the maximum member that can be contained by a `USet{U}`.
-This value is compile-time constant, and is equal to `N - 1`,
-where `N` is the bitsize of `U`.
-
-```jldoctest
-julia> maximum_member(USet{UInt128})
-0x0000007f
-
-julia> maximum_member(USet{UInt16})
-0x0000000f
-```
-"""
 maximum_member(::Type{USet{U}}) where {U} = (bitwidth(U) - 1) % UInt32
 
 """

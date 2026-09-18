@@ -1,3 +1,5 @@
 docs/build/
 /Manifest.toml
 /TODO.md
+test/Manifest.toml
+docs/Manifest.toml

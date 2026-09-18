@@ -72,12 +72,12 @@ end
                 items = Bool[1, 1, 0]
                 expected = copy(data)
                 expected[indices] = items
-                @test Base.setindex(v, items, indices) === UVec{U}(expected)
+                @test setindex(v, items, indices) === UVec{U}(expected)
                 mask = isodd.(1:len)
                 items = .!data[mask]
                 expected = copy(data)
                 expected[mask] = items
-                @test Base.setindex(v, items, mask) === UVec{U}(expected)
+                @test setindex(v, items, mask) === UVec{U}(expected)
             end
         end
     end
@@ -95,9 +95,9 @@ end
                         expected = copy(data)
                         expected[r] = items
                         result = UVec{D}(expected)
-                        @test Base.setindex(v, items, r) === result
-                        @test Base.setindex(v, view(items, :), r) === result
-                        @test Base.setindex(v, UVec{S}(items), r) === result
+                        @test setindex(v, items, r) === result
+                        @test setindex(v, view(items, :), r) === result
+                        @test setindex(v, UVec{S}(items), r) === result
                     end
                 end
             end

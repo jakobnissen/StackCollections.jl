@@ -164,13 +164,13 @@ end
         @test (@inbounds append(v, (0, 1))) === UVec{UInt8}([1, 0, 1, 0, 1])
         @test (@inbounds pop(v)) === (UVec{UInt8}([1, 0]), true)
         @test (@inbounds popfirst(v)) === (UVec{UInt8}([0, 1]), true)
-        @test (@inbounds Base.setindex(v, 1, 2)) === UVec{UInt8}([1, 1, 1])
+        @test (@inbounds setindex(v, 1, 2)) === UVec{UInt8}([1, 1, 1])
         @test_throws InexactError @inbounds UVec{UInt8}([2])
         @test_throws InexactError @inbounds push(v, 2)
         @test_throws InexactError @inbounds push(v, 0, 2)
         @test_throws InexactError @inbounds pushfirst(v, 2)
         @test_throws InexactError @inbounds append(v, (0, 2))
-        @test_throws InexactError @inbounds Base.setindex(v, 2, 1)
+        @test_throws InexactError @inbounds setindex(v, 2, 1)
     end
 
     @testset "push" begin
@@ -245,80 +245,80 @@ end
     end
 
     @testset "setindex" begin
-        @test Base.setindex(v, 0, 1) === UVec{UInt8}([0, 0, 1])
-        @test Base.setindex(v, 1.0, 2) === UVec{UInt8}([1, 1, 1])
-        @test Base.setindex(v, 0, 3) === UVec{UInt8}([1, 0, 0])
-        @test Base.setindex(v, true, 1) === v
+        @test setindex(v, 0, 1) === UVec{UInt8}([0, 0, 1])
+        @test setindex(v, 1.0, 2) === UVec{UInt8}([1, 1, 1])
+        @test setindex(v, 0, 3) === UVec{UInt8}([1, 0, 0])
+        @test setindex(v, true, 1) === v
         @test v === UVec{UInt8}([1, 0, 1])
         for T in (Int8, UInt8, Int128, UInt128, BigInt)
-            @test Base.setindex(v, 1, T(2)) === UVec{UInt8}([1, 1, 1])
-            @test_throws BoundsError Base.setindex(v, 0, T(0))
-            @test_throws BoundsError Base.setindex(v, 0, T(4))
+            @test setindex(v, 1, T(2)) === UVec{UInt8}([1, 1, 1])
+            @test_throws BoundsError setindex(v, 0, T(0))
+            @test_throws BoundsError setindex(v, 0, T(4))
         end
         for i in (-1, typemin(Int), typemax(Int), typemax(UInt128), big(2)^128 + 1)
-            @test_throws BoundsError Base.setindex(v, false, i)
+            @test_throws BoundsError setindex(v, false, i)
         end
-        @test_throws BoundsError Base.setindex(UVec{UInt8}(), true, 1)
-        @test_throws InexactError Base.setindex(v, 2, 1)
-        @test_throws BoundsError Base.setindex(v, 2, 0)
-        @test_throws MethodError Base.setindex(v, :invalid, 1)
+        @test_throws BoundsError setindex(UVec{UInt8}(), true, 1)
+        @test_throws InexactError setindex(v, 2, 1)
+        @test_throws BoundsError setindex(v, 2, 0)
+        @test_throws MethodError setindex(v, :invalid, 1)
     end
 
     @testset "Vector setindex" begin
         for items in ([0, 1], (0, 1), UVec{UInt16}([0, 1]), (i for i in (0, 1)))
-            @test Base.setindex(v, items, [3, 2]) === UVec{UInt8}([1, 1, 0])
-            @test Base.setindex(v, items, 3:-1:2) === UVec{UInt8}([1, 1, 0])
+            @test setindex(v, items, [3, 2]) === UVec{UInt8}([1, 1, 0])
+            @test setindex(v, items, 3:-1:2) === UVec{UInt8}([1, 1, 0])
         end
-        @test Base.setindex(v, (0, 1), 1:2) === UVec{UInt8}([0, 1, 1])
-        @test Base.setindex(v, [1, 0], [2, 2]) === v
-        @test Base.setindex(v, [0, 1], [2, 2]) === UVec{UInt8}([1, 1, 1])
-        @test Base.setindex(v, Bool[], Int[]) === v
-        @test Base.setindex(UVec{UInt8}(), (), Int[]) === UVec{UInt8}()
-        @test Base.setindex(v, view([0, 1], :), view([3, 2], :)) === UVec{UInt8}([1, 1, 0])
+        @test setindex(v, (0, 1), 1:2) === UVec{UInt8}([0, 1, 1])
+        @test setindex(v, [1, 0], [2, 2]) === v
+        @test setindex(v, [0, 1], [2, 2]) === UVec{UInt8}([1, 1, 1])
+        @test setindex(v, Bool[], Int[]) === v
+        @test setindex(UVec{UInt8}(), (), Int[]) === UVec{UInt8}()
+        @test setindex(v, view([0, 1], :), view([3, 2], :)) === UVec{UInt8}([1, 1, 0])
         for I in (Int8, UInt8, Int128, UInt128, BigInt)
-            @test Base.setindex(v, [0, 1], I[3, 2]) === UVec{UInt8}([1, 1, 0])
+            @test setindex(v, [0, 1], I[3, 2]) === UVec{UInt8}([1, 1, 0])
         end
         for i in (0, -1, 4, typemin(Int), typemax(UInt128), big(2)^128 + 1)
-            @test_throws BoundsError Base.setindex(v, [0], [i])
+            @test_throws BoundsError setindex(v, [0], [i])
         end
-        @test_throws BoundsError Base.setindex(v, [2], [0])
-        @test_throws BoundsError Base.setindex(v, [0], [1, 4])
-        @test_throws DimensionMismatch Base.setindex(v, [0], [1, 2])
-        @test_throws DimensionMismatch Base.setindex(v, [0, 1], [1])
-        @test_throws DimensionMismatch Base.setindex(v, [0], Int[])
-        @test_throws InexactError Base.setindex(v, [0, 2], [1, 2])
-        @test_throws MethodError Base.setindex(v, [:invalid], [1])
-        @test (@inbounds Base.setindex(v, [0, 1], [3, 2])) === UVec{UInt8}([1, 1, 0])
-        @test_throws InexactError @inbounds Base.setindex(v, [2], [1])
+        @test_throws BoundsError setindex(v, [2], [0])
+        @test_throws BoundsError setindex(v, [0], [1, 4])
+        @test_throws DimensionMismatch setindex(v, [0], [1, 2])
+        @test_throws DimensionMismatch setindex(v, [0, 1], [1])
+        @test_throws DimensionMismatch setindex(v, [0], Int[])
+        @test_throws InexactError setindex(v, [0, 2], [1, 2])
+        @test_throws MethodError setindex(v, [:invalid], [1])
+        @test (@inbounds setindex(v, [0, 1], [3, 2])) === UVec{UInt8}([1, 1, 0])
+        @test_throws InexactError @inbounds setindex(v, [2], [1])
 
         # Bool is an Integer subtype, but Boolean vectors are logical masks.
         for mask in (Bool[1, 0, 1], BitVector([1, 0, 1]), UVec{UInt8}([1, 0, 1]))
-            @test Base.setindex(v, [0, 0], mask) === UVec{UInt8}([0, 0, 0])
-            @test_throws DimensionMismatch Base.setindex(v, [0, 1, 0], mask)
-            @test (@inbounds Base.setindex(v, [0, 0], mask)) === UVec{UInt8}([0, 0, 0])
+            @test setindex(v, [0, 0], mask) === UVec{UInt8}([0, 0, 0])
+            @test_throws DimensionMismatch setindex(v, [0, 1, 0], mask)
+            @test (@inbounds setindex(v, [0, 0], mask)) === UVec{UInt8}([0, 0, 0])
         end
-        @test Base.setindex(v, [0, 0, 0], trues(3)) === UVec{UInt8}([0, 0, 0])
-        @test Base.setindex(v, (), falses(3)) === v
-        @test Base.setindex(UVec{UInt8}(), (), Bool[]) === UVec{UInt8}()
-        @test_throws BoundsError Base.setindex(v, (), falses(2))
-        @test_throws BoundsError Base.setindex(v, (), falses(4))
+        @test setindex(v, [0, 0, 0], trues(3)) === UVec{UInt8}([0, 0, 0])
+        @test setindex(v, (), falses(3)) === v
+        @test setindex(UVec{UInt8}(), (), Bool[]) === UVec{UInt8}()
+        @test_throws BoundsError setindex(v, (), falses(2))
+        @test_throws BoundsError setindex(v, (), falses(4))
         @test v === UVec{UInt8}([1, 0, 1])
     end
 
     @testset "Range setindex" begin
-        @test Base.setindex(v, [0, 1], 1:2) === UVec{UInt8}([0, 1, 1])
-        @test Base.setindex(v, [1.0, 0.0], 2:3) === UVec{UInt8}([1, 1, 0])
-        @test Base.setindex(v, v, 1:3) === v
+        @test setindex(v, [0, 1], 1:2) === UVec{UInt8}([0, 1, 1])
+        @test setindex(v, [1.0, 0.0], 2:3) === UVec{UInt8}([1, 1, 0])
+        @test setindex(v, v, 1:3) === v
         for I in (Int8, UInt8, Int128, UInt128, BigInt)
-            @test Base.setindex(v, [1, 0], I(2):I(3)) === UVec{UInt8}([1, 1, 0])
-            @test_throws BoundsError Base.setindex(v, [0], I(0):I(0))
-            @test_throws BoundsError Base.setindex(v, [0], I(4):I(4))
+            @test setindex(v, [1, 0], I(2):I(3)) === UVec{UInt8}([1, 1, 0])
+            @test_throws BoundsError setindex(v, [0], I(0):I(0))
+            @test_throws BoundsError setindex(v, [0], I(4):I(4))
         end
         for r in (1:0, 2:1, 4:3, -2:-3, 20:19)
-            @test Base.setindex(v, Bool[], r) === v
-            @test Base.setindex(v, UVec{UInt16}(), r) === v
-            @test Base.setindex(UVec{UInt8}(), Bool[], r) === UVec{UInt8}()
-            @test_throws DimensionMismatch Base.setindex(v, [true], r)
+            @test setindex(v, Bool[], r) === v
+            @test setindex(v, UVec{UInt16}(), r) === v
+            @test setindex(UVec{UInt8}(), Bool[], r) === UVec{UInt8}()
+            @test_throws DimensionMismatch setindex(v, [true], r)
         end
         # Check bounds before computing potentially overflowing range lengths
         # or reporting a mismatch for an invalid selection.
@@ -327,16 +327,16 @@ end
                 UInt128(1):typemax(UInt128),
                 (big(2)^128 + 1):(big(2)^128 + 3),
             )
-            @test_throws BoundsError Base.setindex(v, [0], r)
+            @test_throws BoundsError setindex(v, [0], r)
         end
-        @test_throws BoundsError Base.setindex(UVec{UInt8}(), [true], 1:1)
-        @test_throws DimensionMismatch Base.setindex(v, [0], 1:2)
-        @test_throws DimensionMismatch Base.setindex(v, UVec{UInt16}([0, 1]), 1:1)
-        @test_throws InexactError Base.setindex(v, [0, 2], 1:2)
-        @test_throws MethodError Base.setindex(v, [:invalid], 1:1)
-        @test (@inbounds Base.setindex(v, [0, 1], 1:2)) === UVec{UInt8}([0, 1, 1])
-        @test (@inbounds Base.setindex(v, UVec{UInt16}([0, 1]), 1:2)) === UVec{UInt8}([0, 1, 1])
-        @test_throws InexactError @inbounds Base.setindex(v, [2], 1:1)
+        @test_throws BoundsError setindex(UVec{UInt8}(), [true], 1:1)
+        @test_throws DimensionMismatch setindex(v, [0], 1:2)
+        @test_throws DimensionMismatch setindex(v, UVec{UInt16}([0, 1]), 1:1)
+        @test_throws InexactError setindex(v, [0, 2], 1:2)
+        @test_throws MethodError setindex(v, [:invalid], 1:1)
+        @test (@inbounds setindex(v, [0, 1], 1:2)) === UVec{UInt8}([0, 1, 1])
+        @test (@inbounds setindex(v, UVec{UInt16}([0, 1]), 1:2)) === UVec{UInt8}([0, 1, 1])
+        @test_throws InexactError @inbounds setindex(v, [2], 1:1)
         @test v === UVec{UInt8}([1, 0, 1])
     end
 end
@@ -517,7 +517,7 @@ end
                         end
                         changed = copy(data)
                         changed[i] = !data[i]
-                        @test Base.setindex(v, !data[i], i) === UVec{T}(changed)
+                        @test setindex(v, !data[i], i) === UVec{T}(changed)
                     end
                 end
             end

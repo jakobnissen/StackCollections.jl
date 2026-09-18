@@ -4,46 +4,42 @@
 ![CI](https://github.com/jakobnissen/StackCollections.jl/workflows/CI/badge.svg)
 [![Codecov](https://codecov.io/gh/jakobnissen/StackCollections.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/jakobnissen/StackCollections.jl)
 
-_Fixed-bit collections in Julia_
+_Integer backed collections in Julia_
+This package implements a few collection typed stored in machine integers.
+Currently, the following types are implemented:
 
-This package implements a few collection types that can be stored in one or a few machine integers:
+* `USet{U <: Unsigned} <: AbstractSet{UInt32}`: Immutable bit set backed by a `U`
+* `UVec{U <: Unsigned} <: AbstractVector{Bool}`: Immutable boolean vector with the vector and the length packed into a `U`.
 
-* `DigitSet`: A set of integers 0:63
-* `StackSet`: A set of integers N:N+63
-* `StackVector{L}`: A boolean vector with a length `L` of up to 64.
-* `OneHotVector`: A boolean vector with exactly one value `true`, rest `false`.
+These types are easy to implement yourself, but this package provides value by providing many already-tested and highly optimised methods.
 
-The main features of the types are:
-* They are simple to use, implements the basic methods from `Base` you would expect such as `union` for sets and `reverse` for vectors:
-```
-julia> a = StackVector{4}([true, true, false, true]); reverse(a)
-4-element StackVector{4}:
- 1
- 0
- 1
- 1
- ```
-* They are safe by default, and throws informative error messages if you attempt illegal or undefined operations.
-```
-julia> push(DigitSet(), 100)
-ERROR: ArgumentError: DigitSet can only contain 0:63
-```
-* All types are immutable and so easier to reason about. Base methods that usually end with an exclamation mark such as `push!` instead must use `push`.
-```
-julia> push!(DigitSet(), 100)
-ERROR: MethodError: no method matching push!(::DigitSet, ::Int64)
-```
-* They are _highly_ efficiently implemented, with most methods meticulously crafted for maximal performance.
-```
-julia> f(x, y) = length(setdiff(x, symdiff(x, y)));
+The types are immutable and so this package exports a number of non-mutating equivalents to Base's mutating methods, such as `pop`, `push`, and `deleteat`.
 
-julia> code_native(f, (DigitSet, DigitSet), debuginfo=:none)
-    .section    __TEXT,__text,regular,pure_instructions
-    movq    (%rsi), %rax
-    andq    (%rdi), %rax
-    popcntq %rax, %rax
-    retq
-    nopl    (%rax)
-```
+See [the documentation](https://jakobnissen.github.io/StackCollections.jl/dev) for more details.
 
-This API follows SemVer 2.0.0. The API for this package is defined by the documentation.
+## Examples
+```julia
+julia> using StackCollections
+
+julia> s = USet{UInt32}([30, 11, 19, 4, 8]);
+
+julia> s2 = setdiff(s, USet{UInt64}([1, 19, 12, 4]))
+USet{UInt32} with 3 elements:
+  0x00000008
+  0x0000000b
+  0x0000001e
+
+julia> (s3, element) = pop(s2); element
+0x0000001e
+
+julia> s3
+USet{UInt32} with 2 elements:
+  0x00000008
+  0x0000000b
+
+julia> v = UVec{UInt16}([1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 0]);
+
+julia> reverse(v, 3, 9) |> println
+Bool[1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0]
+
+``` 
