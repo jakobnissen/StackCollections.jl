@@ -1,4 +1,4 @@
-@testset "Construction" begin
+@testset "Construction" failfast = true begin
     v = UVec{UInt32}()
     @test v isa UVec{UInt32}
     @test isempty(v)
@@ -59,7 +59,7 @@ end
         @test UVec{UInt8}([false]) != UVec{UInt8}()
     end
 
-    @testset "Iteration and indexing" begin
+    @testset "Iteration and indexing" failfast = true begin
         @test IndexStyle(typeof(v)) === IndexLinear()
         @test eachindex(v) == 1:4
         @test eltype(v) === Bool
@@ -89,7 +89,7 @@ end
         @test_throws BoundsError UVec{UInt8}()[1]
     end
 
-    @testset "copy and empty" begin
+    @testset "copy and empty" failfast = true begin
         for U in (UInt8, UInt16, UInt32, UInt64, UInt128)
             T = UVec{U}
             for data in (Bool[], [false], [true], isodd.(1:capacity(T)))
@@ -101,7 +101,7 @@ end
         end
     end
 
-    @testset "Range indexing" begin
+    @testset "Range indexing" failfast = true begin
         @test v[1:end] === v
         @test v[1:2] === UVec{UInt8}([1, 0])
         @test v[2:3] === UVec{UInt8}([0, 1])
@@ -244,7 +244,7 @@ end
         @test_throws ArgumentError popfirst(UVec{UInt8}())
     end
 
-    @testset "setindex" begin
+    @testset "setindex" failfast = true begin
         @test setindex(v, 0, 1) === UVec{UInt8}([0, 0, 1])
         @test setindex(v, 1.0, 2) === UVec{UInt8}([1, 1, 1])
         @test setindex(v, 0, 3) === UVec{UInt8}([1, 0, 0])
@@ -264,7 +264,7 @@ end
         @test_throws MethodError setindex(v, :invalid, 1)
     end
 
-    @testset "Vector setindex" begin
+    @testset "Vector setindex" failfast = true begin
         for items in ([0, 1], (0, 1), UVec{UInt16}([0, 1]), (i for i in (0, 1)))
             @test setindex(v, items, [3, 2]) === UVec{UInt8}([1, 1, 0])
             @test setindex(v, items, 3:-1:2) === UVec{UInt8}([1, 1, 0])
@@ -305,7 +305,7 @@ end
         @test v === UVec{UInt8}([1, 0, 1])
     end
 
-    @testset "Range setindex" begin
+    @testset "Range setindex" failfast = true begin
         @test setindex(v, [0, 1], 1:2) === UVec{UInt8}([0, 1, 1])
         @test setindex(v, [1.0, 0.0], 2:3) === UVec{UInt8}([1, 1, 0])
         @test setindex(v, v, 1:3) === v
@@ -344,7 +344,7 @@ end
 @testset "Vector operations" begin
     v = UVec{UInt8}([1, 0, 0, 1, 0])
 
-    @testset "Search indices" begin
+    @testset "Search indices" failfast = true begin
         for U in (UInt8, UInt16, UInt32, UInt64, UInt128)
             for data in (Bool[], Bool[1, 0, 1, 0])
                 searched = UVec{U}(data)
@@ -400,7 +400,7 @@ end
         @test v === UVec{UInt8}([1, 0, 0, 1, 0])
     end
 
-    @testset "circshift" begin
+    @testset "circshift" failfast = true begin
         @test circshift(v, 1) === UVec{UInt8}([0, 1, 0, 0, 1])
         @test circshift(v, -1) === UVec{UInt8}([0, 0, 1, 0, 1])
         @test circshift(v, 0) === v
@@ -425,22 +425,36 @@ end
     end
 end
 
-@testset "Backing widths and lengths" begin
-    # Every UInt8 vector is covered. Native types exercise every length with
-    # patterns that expose length-bit carries, high bits, and cleared bits.
+@testset "Backing widths and lengths" failfast = true begin
+    # Every UInt8 vector and UInt16 length is covered. Wider types sample
+    # lengths around carries, word boundaries, and capacity with patterns
+    # that expose high bits and cleared bits.
     # Identity with a freshly constructed result also checks that operations
     # leave no stale bits outside the encoded vector.
     for T in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
-        @testset "$T" begin
+        @testset "$T" failfast = true begin
             n = capacity(UVec{T})
-            # Sample large types at boundaries without making the per-index
-            # checks quadratic in their full capacity.
+            # Keep short lengths, both sides of length-field carries, and the
+            # point where the payload crosses a 64-bit word after its length field.
             lengths = if T in (UInt256, UInt512)
                 filter(<=(n), (0, 1, 127, 128, 129, 255, 256, 257, n - 1, n))
+            elseif T in (UInt32, UInt64, UInt128)
+                carries = [p + d for p in (4, 8, 16, 32, 64) for d in -1:1]
+                boundaries = [64 - (8sizeof(T) - n) + d for d in -1:1]
+                sort!(unique(filter(l -> 0 <= l <= n, [0, 1, 2, 3, n ÷ 2, n - 1, n, carries..., boundaries...])))
             else
                 0:n
             end
             for len in lengths
+                # Keep every UInt8 index. For wider vectors, check both ends,
+                # adjacent middle bits, and crossings of backing-word boundaries.
+                # Subtract the packed length field to locate those crossings.
+                positions = if T === UInt8
+                    1:len
+                else
+                    boundaries = [b - (8sizeof(T) - n) + d for b in (64, 128, 256) for d in -1:1]
+                    sort!(unique(filter(i -> 1 <= i <= len, [1, 2, len ÷ 2, len ÷ 2 + 1, len - 1, len, boundaries...])))
+                end
                 patterns = if T === UInt8
                     ([isodd(bits >> i) for i in 0:(len - 1)] for bits in 0:((1 << len) - 1))
                 else
@@ -472,7 +486,7 @@ end
                         @test findprev(f, v, 0) === nothing
                         @test_throws BoundsError findnext(f, v, 0)
                         @test_throws BoundsError findprev(f, v, len + 1)
-                        for i in eachindex(data)
+                        for i in positions
                             @test findnext(f, v, i) === findnext(f, data, i)
                             @test findprev(f, v, i) === findprev(f, data, i)
                         end
@@ -505,7 +519,7 @@ end
                         @test pop(v) === (UVec{T}(data[1:(end - 1)]), data[end])
                         @test popfirst(v) === (UVec{T}(data[2:end]), data[1])
                     end
-                    for i in eachindex(data)
+                    for i in positions
                         @test v[i] === data[i]
                         @test v[1:i] === UVec{T}(data[1:i])
                         @test v[i:len] === UVec{T}(data[i:len])

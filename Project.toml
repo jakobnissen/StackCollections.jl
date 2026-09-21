@@ -3,6 +3,9 @@ uuid = "501fa84d-4592-420e-a352-d1184606d913"
 version = "0.2.0"
 authors = ["Jakob Nybo Andersen <jnandersen@proton.me>"]
 
+[workspace]
+projects = ["test", "docs"]
+
 [deps]
 
 [compat]
@@ -13,5 +16,5 @@ julia = "1"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 BitIntegers = "c3b6d118-76ef-56ca-8cc7-ebb389d030a1"
 
-[targets]
-test = ["Test", "BitIntegers"]
+#[targets]
+#test = ["Test", "BitIntegers"]

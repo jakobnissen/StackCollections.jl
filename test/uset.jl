@@ -1,4 +1,4 @@
-@testset "Construction" begin
+@testset "Construction" failfast = true begin
     # Empty construction is typed by the backing unsigned integer, and empty
     # preserves that concrete USet type.
     empty_set = USet{UInt32}()
@@ -188,7 +188,7 @@ end
         @test_throws ArgumentError popfirst(USet{UInt8}())
     end
 
-    @testset "pop member" begin
+    @testset "pop member" failfast = true begin
         # pop(s, i) is immutable and treats absent or unrepresentable members as
         # no-ops.
         @test pop(s, 3) == USet{UInt8}([0, 7])
@@ -300,7 +300,7 @@ end
     end
 end
 
-@testset "Conversion and raw storage" begin
+@testset "Conversion and raw storage" failfast = true begin
     for S in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
         for raw in (zero(S), one(S), S(0xa5), typemax(S), one(S) << (8sizeof(S) - 1))
             s = uset_from_integer(raw)
@@ -325,9 +325,9 @@ end
     @test_throws MethodError uset_from_integer(5)
 end
 
-@testset "Large backing integers" begin
+@testset "Large backing integers" failfast = true begin
     for U in (UInt256, UInt512)
-        @testset "$U" begin
+        @testset "$U" failfast = true begin
             top = 8sizeof(U) - 1
             members = [0, 127, 128, 129, top - 1, top]
             reference = Set(members)

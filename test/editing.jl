@@ -1,6 +1,6 @@
-@testset "Editing and conversion across backing widths" begin
+@testset "Editing and conversion across backing widths" failfast = true begin
     for U in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
-        @testset "$U" begin
+        @testset "$U" failfast = true begin
             T = UVec{U}
             cap = capacity(T)
             # Exhaust UInt8, but sample lengths and edit positions for wider
@@ -62,7 +62,7 @@
     end
 end
 
-@testset "Vector replacement across backing widths" begin
+@testset "Vector replacement across backing widths" failfast = true begin
     for U in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
         for len in (1, capacity(UVec{U}) ÷ 2, capacity(UVec{U}))
             for data in (trues(len), falses(len), isodd.(1:len))
@@ -83,7 +83,7 @@ end
     end
 end
 
-@testset "Range replacement across backing widths" begin
+@testset "Range replacement across backing widths" failfast = true begin
     for D in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512), S in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
         for len in (capacity(UVec{D}) ÷ 2, capacity(UVec{D}))
             limit = min(len, capacity(UVec{S}))
@@ -95,8 +95,13 @@ end
                         expected = copy(data)
                         expected[r] = items
                         result = UVec{D}(expected)
-                        @test setindex(v, items, r) === result
-                        @test setindex(v, view(items, :), r) === result
+                        # Vector and view replacements do not depend on S.
+                        # Cover them once per destination width; retain every
+                        # source/destination pair for packed replacements.
+                        if S === D
+                            @test setindex(v, items, r) === result
+                            @test setindex(v, view(items, :), r) === result
+                        end
                         @test setindex(v, UVec{S}(items), r) === result
                     end
                 end
@@ -105,7 +110,7 @@ end
     end
 end
 
-@testset "Conversion capacity boundaries" begin
+@testset "Conversion capacity boundaries" failfast = true begin
     for S in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512), D in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
         len = min(capacity(UVec{S}), capacity(UVec{D}))
         # A set high bit must survive widening and narrowing at capacity.
@@ -124,7 +129,7 @@ end
     end
 end
 
-@testset "Editing boundaries and integer indices" begin
+@testset "Editing boundaries and integer indices" failfast = true begin
     v = UVec{UInt8}([1, 0, 1])
     @test insert(UVec{UInt8}(), 1, 1.0) === UVec{UInt8}([true])
     @test insert(v, 1, 0) === UVec{UInt8}([0, 1, 0, 1])

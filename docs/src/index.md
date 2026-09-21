@@ -11,13 +11,13 @@ this package exports several new non-mutating functions such as `push`, `pop` an
 Operations on these types have been microoptimized.
 
 ## The `USet` type
-A `USet{U <: Unsigned} <: AbstractSet{UInt32}` is an immutable integer set backed by a `U`.
+A `USet{U <: Unsigned} <: AbstractSet{UInt32}` is an immutable integer set backed by a `U`. For an integer `U` with `B` bits, an `USet{U}` can contain the values `UInt32(0):UInt32(B - 1)`. Attempting to add `UInt32` values above that range to the set wil throw an `ArgumentError`.  
 
 These sets are ordered: Iteration is guaranteed to be in order from lowest to highest element, and `pop` and `popfirst` is guaranteed to remove the largest (last) and smallest (first) element, respectively.
 
 As `USet`s are immutable, mutating operations like `push!` or `setdiff!` are not available. Instead, use non-mutating functions like `push` or `setdiff` which return new `USet`s. Since `USet`s are typically stored in registers, there is no efficiency gain from mutation.
 
-### `USet` integer representation
+#### `USet` integer representation
 A `USet{U}` is guaranteed to be an immutable struct with the same memory layout as a `U`, where the bits from LSB to MSB represent the presence of the elements `UInt32(0)` upwards.
 For example, `USet{UInt16}([2, 9, 1, 7, 3])` is guaranteed to be stored in memory as `0x028e`.
 
@@ -29,5 +29,5 @@ These operations optimize to noops.
 A `UVec{U <: Unsigned} <: AbstractVector{Bool}` is an immutable boolean vector backed by a `U`.
 `UVec`s are immutable, so mutating operations like `push!`, `setindex!` or `deleteat!` are not available. This package exports non-mutating versions `push`, `setindex`, `deleteat` etc.
 
-### `UVec` integer representation
+#### `UVec` integer representation
 `UVec{U}` are guaranteed to have the same memory layout as a single `U`.
