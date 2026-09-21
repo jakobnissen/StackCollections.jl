@@ -95,7 +95,15 @@ function popfirst end
 include("uset.jl")
 include("uvec.jl")
 
-public maximum_member
+# TODO: Replace this compatibility shim with a `public` statement when Julia 1.11
+# becomes the minimum supported version.
+if VERSION >= v"1.11.0-DEV.469"
+    let str = """
+        public maximum_member
+        """
+        eval(Meta.parse(str))
+    end
+end
 
 export USet,
     UVec,
