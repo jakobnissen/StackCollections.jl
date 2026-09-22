@@ -19,7 +19,7 @@ where set bits from LSB to MSB represent the presence of the integers
 zero and upwards. I.e. `USet{UInt8}([0, 3, 5])` is guaranteed to have the same
 memory layout as `0x29`.
 Obtain the equivalent integer with `Integer(s)`. This is guaranteed to be
-a noop. Construct from the equivalent integer with [`uset_from_integer`](@ref)
+a noop. Construct from the equivalent integer with [`uset_from_bits`](@ref)
 
 # Examples
 ```jldoctest
@@ -121,12 +121,11 @@ Base.copy(x::USet) = x
 
 Base.Integer(x::USet) = x.x
 
-# TODO: Think of a better name
 """
-    uset_from_integer(u::U)::USet{U} where {U <: Unsigned}
+    uset_from_bits(u::U)::USet{U} where {U <: Unsigned}
 
 Construct a `USet{U}` using the backing integer `u`.
-For bitstype `U`, it is guaranteed that `Integer(uset_from_integer(u)) === u`.
+For bitstype `U`, it is guaranteed that `Integer(uset_from_bits(u)) === u`.
 
 The resulting `USet` contains the elements represented by the set
 bits in `u`, from `UInt32(0)` being the LSB, and `UInt32(bitsizeof(U) - 1)`
@@ -135,7 +134,7 @@ is the MSB.
 This operation is guaranteed to be optimizable to a noop.
 
 ```jldoctest
-julia> u = 0x50ae; s = uset_from_integer(u);
+julia> u = 0x50ae; s = uset_from_bits(u);
 
 julia> s isa USet{UInt16}
 true
@@ -147,7 +146,7 @@ julia> Integer(s) === u
 true
 ```
 """
-uset_from_integer(u::Unsigned) = new_uset(u)
+uset_from_bits(u::Unsigned) = new_uset(u)
 
 function Base.iterate(x::USet{U}, state::U = x.x) where {U}
     iszero(state) && return nothing

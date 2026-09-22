@@ -41,6 +41,8 @@ function UVec{U}(itr) where {U <: Unsigned}
     return new_uvec(u | n_items % U)
 end
 
+@noinline throw_boundserror(v, i) = throw(BoundsError(v, i))
+
 @noinline function throw_uvec_too_big(dest::Type{UVec{D}}, source::Type{UVec{S}}) where {S, D}
     throw(ArgumentError("$(source)'s length exceeds capacity of $(dest)"))
 end
@@ -278,7 +280,7 @@ The elements at, or after `idx` is shifted one index up.
 The index `idx` must be in `1:length(v)+1`. Throws a `BoundsError` if `idx` is out of bounds.
 Throw an `ArgumentError` if `v` is at capacity. Both are disabled with `@inbounds`.
 
-See also: [`push`](@ref), [`deleteat`](@ref), [`append`](@ref)
+See also: [`spliceinto`](@ref), [`push`](@ref), [`deleteat`](@ref), [`append`](@ref)
 
 # Examples
 ```jldoctest
@@ -323,7 +325,7 @@ and all subsequent element shifted downwards to fill the deleted elements.
 
 Throw a `BoundsError` if `idx` is out of bounds for `v`. This can be disabled with `@inbounds`.
 
-See also: [`pop`](@ref), [`popfirst`](@ref), [`insert`](@ref)
+See also: [`pop`](@ref), [`popfirst`](@ref), [`spliceinto`](@ref)
 
 # Examples
 ```jldoctest
@@ -581,7 +583,7 @@ end
 
 @inline function Base.findnext(f::Union{typeof(identity), typeof(!)}, v::UVec{U}, idx::Integer) where {U <: Unsigned}
     # Base throws below the first index, but returns nothing past the end.
-    @boundscheck(idx < 1 && Base.throw_boundserror(v, idx))
+    @boundscheck(idx < 1 && throw_boundserror(v, idx))
     idx > length(v) && return nothing
     idx = idx % Int
     # Remove the length and elements before idx. Complementing also sets
@@ -594,7 +596,7 @@ end
 
 @inline function Base.findprev(f::Union{typeof(identity), typeof(!)}, v::UVec{U}, idx::Integer) where {U <: Unsigned}
     # Check both limits before narrowing potentially large integer indices.
-    @boundscheck(idx > length(v) && Base.throw_boundserror(v, idx))
+    @boundscheck(idx > length(v) && throw_boundserror(v, idx))
     idx < 1 && return nothing
     idx = idx % Int
     # Shift idx to the top, discarding all later elements. Length bits can
@@ -623,4 +625,128 @@ end
     iszero(u) && return 1
     # Lowest set bit
     return trailing_zeros(u) + 1
+end
+
+"""
+    spliceinto(v::UVec{U}, i::Integer, e::AbstractVector)::UVec{U}
+
+Return a copy of `v` with the elements of `e` (converted to `Bool`) inserted positions `i:i+length(v)-1`,
+and the previously existing elements at `i:length(v)` shifted to higher indices.
+
+Throw a `BoundsError` if `i` is not in `1:length(v)+1`. Throw an `ArgumentError` if the resulting `UVec{U}`'s
+length would exceed `capacity(UVec{U})`. Both exceptions be suppressed with `@inbounds`.
+
+See also: [`insert`](@ref), [`deleteat`](@ref), [`push`](@ref)
+
+# Examples
+```jldoctest
+julia> v = UVec{UInt32}([0, 1, 1, 1, 1, 0, 0]);
+
+julia> v2 = spliceinto(v, 3, [0, 0, 0]);
+
+julia> v2 === typeof(v)([0, 1, 0, 0, 0, 1, 1, 1, 0, 0])
+true
+
+julia> spliceinto(v, 8, [1, 1]) == [0, 1, 1, 1, 1, 0, 0, 1, 1]
+true
+```
+"""
+function spliceinto(v::UVec{U}, i, e::AbstractVector) where {U <: Unsigned}
+    return spliceinto(v, i, UVec{U}(e)::UVec{U})
+end
+
+function spliceinto(v::UVec{U}, i::Integer, e::UVec{U}) where {U <: Unsigned}
+    L = length(e) + length(v)
+    @boundscheck if L > capacity(UVec{U})
+        throw_full_uvec()
+    end
+    @boundscheck if i < 1 || i > length(v) + 1
+        throw_boundserror(v, i)
+    end
+
+    i = (i % Int)::Int
+    LB = length_bits(UVec{U})
+
+    # Coding bits of e in the right place
+    u = left_shift(e.x >> LB, LB + i - 1)
+
+    # Add in the bits of v that goes before e.
+    # They are already in right place so we just mask out subsequent coding bits.
+    mask = bitmask(U, LB + i - 1)
+    u |= v.x & mask
+
+    # Add in coding bits of v that go after e. Length bits are masked out here
+    u |= left_shift(v.x & ~mask, length(e))
+
+    # Update length. Since u contains the length of v, we add the length bits of e.
+    return new_uvec(u + length(e) % U)
+end
+
+"""
+    spliceinto(v::UVec{U}, i::UnitRange, e::AbstractVector)::UVec{U}
+
+Return a copy of `v` with the indices at `i` deleted, and the  elements of `e` (converted to `Bool`)
+inserted at the deletion site. Subsequent elements are shifted to higher indices.
+
+Throw a `BoundsError` if `i` is not in `1:length(v)+1`. Throw an `ArgumentError` if the resulting `UVec{U}`'s
+length would exceed `capacity(UVec{U})`. Both exceptions be suppressed with `@inbounds`.
+
+This is equivalent to `spliceinto(deleteat(v, i), first(i), e)`, but more efficient.
+
+See also: [`insert`](@ref), [`deleteat`](@ref), [`push`](@ref)
+
+# Examples
+```jldoctest
+julia> v = UVec{UInt32}([0, 1, 1, 1, 1, 0, 0]);
+
+julia> v2 = spliceinto(v, 3, [0, 0, 0]);
+
+julia> v2 === typeof(v)([0, 1, 0, 0, 0, 1, 1, 1, 0, 0])
+true
+
+julia> spliceinto(v, 8, [1, 1]) == [0, 1, 1, 1, 1, 0, 0, 1, 1]
+true
+```
+"""
+function spliceinto(v::UVec{U}, i::UnitRange, e::UVec{U}) where {U <: Unsigned}
+    # We can't forward to just checking if i is inbounds in v, because that trivially
+    # returns true for empty i, whereas we care about the _location_ of the range.
+    @boundscheck if first(i) < 1 || last(i) > length(v)
+        throw_boundserror(v, i)
+    end
+
+    # Since we now checked i is inbounds, we can truncate to Int without checks
+    fst, lst = (first(i) % Int)::Int, (last(i) % Int)::Int
+    L = lst - fst + 1
+    @boundscheck if length(v) + length(e) - L > capacity(UVec{U})
+        throw_full_uvec()
+    end
+
+    LB = length_bits(UVec{U})
+
+    # Bits of e shifted shifted into fst:fst+length(e)
+    u = left_shift(e.x >> LB, LB + fst - 1)
+
+    # Bits of v at indices 1:fst-1, kept in place
+    # Note that if fst == capacity(UVec{U}) + 1 (which is allowed when i is empty),
+    # then bitmask would overflow and retain no bits instead of all the bits.
+    # We handle it here by subtracting which makes it overflow back again.
+    msk_len = LB + fst - 1
+    mask = bitmask(U, msk_len)
+    mask -= msk_len == bitwidth(U)
+
+    u |= v.x & mask
+
+    # Mask containing the coding bits of v beyond the deleted range. Note that if deletion goes all the way
+    # to MSB, `bitmask` will overflow and return typemax instead of typemin. In that case, we add one to
+    # wrap it back to typemin
+    mask = ~bitmask(U, LB + lst)
+    mask += mask == typemax(mask)
+
+    # Bits of v at indices lst+1:length(v) shifted into place
+    # We use << here because the shift may be negative if more is deleted than inserted.
+    u |= (v.x & mask) << (length(e) - L)
+
+    # Update length. Since u contains the length of v, we add the length bits of e.
+    return new_uvec(u + (length(e) - L) % U)
 end

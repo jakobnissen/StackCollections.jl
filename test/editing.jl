@@ -110,6 +110,145 @@ end
     end
 end
 
+@testset "spliceinto" failfast = true begin
+    @testset "spliceinto exhaustive UInt8 insertions" failfast = true begin
+        for n in 0:5, m in 0:(5 - n), a in 0:((1 << n) - 1), b in 0:((1 << m) - 1)
+            data = [isodd(a >> j) for j in 0:(n - 1)]
+            items = [isodd(b >> j) for j in 0:(m - 1)]
+            v = UVec{UInt8}(data)
+            for i in 1:(n + 1)
+                expected = UVec{UInt8}(vcat(data[1:(i - 1)], items, data[i:end]))
+                @test spliceinto(v, i, items) === expected
+                @test spliceinto(v, i, UVec{UInt8}(items)) === expected
+            end
+        end
+    end
+
+    @testset "spliceinto across backing widths" failfast = true begin
+        for D in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512), S in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
+            cap = capacity(UVec{D})
+            for n in unique((0, 1, cap ÷ 2, cap))
+                limit = min(cap - n, capacity(UVec{S}))
+                for m in unique((0, 1, limit ÷ 2, limit))
+                    m > limit && continue
+                    for data in (trues(n), falses(n), isodd.(1:n)), items in (trues(m), falses(m), iseven.(1:m))
+                        v = UVec{D}(data)
+                        e = UVec{S}(items)
+                        for i in unique((1, 1 + n ÷ 2, n + 1))
+                            expected = UVec{D}(vcat(data[1:(i - 1)], items, data[i:end]))
+                            @test spliceinto(v, i, e) === expected
+                            if S === D
+                                @test spliceinto(v, i, view(items, :)) === expected
+                            end
+                        end
+                    end
+                end
+            end
+            full = UVec{D}(falses(cap))
+            @test_throws ArgumentError spliceinto(full, 1, UVec{S}([false]))
+            if capacity(UVec{S}) > cap
+                @test_throws ArgumentError spliceinto(UVec{D}(), 1, UVec{S}(falses(cap + 1)))
+            end
+        end
+    end
+
+    @testset "spliceinto boundaries and conversions" failfast = true begin
+        v = UVec{UInt8}([1, 0])
+        expected = UVec{UInt8}([1, 0, 0])
+        @test spliceinto(v, 2, [0.0]) === expected
+        @test spliceinto(v, 2, [0, 1.0]) === UVec{UInt8}([1, 0, 1, 0])
+        for items in ([false], UVec{UInt8}([false]), UVec{UInt16}([false]))
+            for I in (Int8, UInt8, Int128, UInt128, BigInt)
+                @test spliceinto(v, I(2), items) === expected
+            end
+            @test (@inbounds spliceinto(v, 2, items)) === expected
+        end
+        for items in (Bool[], [false], UVec{UInt8}(), UVec{UInt8}([false]))
+            for i in (-1, 0, 4, typemin(Int), typemax(UInt128), big(2)^128 + 1)
+                @test_throws BoundsError spliceinto(v, i, items)
+            end
+            for i in (0, 2)
+                @test_throws BoundsError spliceinto(UVec{UInt8}(), i, items)
+            end
+        end
+        @test_throws ArgumentError spliceinto(v, 2, falses(4))
+        @test_throws ArgumentError spliceinto(UVec{UInt8}(), 1, falses(6))
+        for items in ([2], [-1], [0.5])
+            @test_throws InexactError spliceinto(v, 2, items)
+            @test_throws InexactError @inbounds spliceinto(v, 2, items)
+        end
+        @test_throws MethodError spliceinto(v, 2, [:invalid])
+        @test v === UVec{UInt8}([1, 0])
+    end
+
+    @testset "spliceinto exhaustive UInt8 ranges" failfast = true begin
+        cap = capacity(UVec{UInt8})
+        for n in 0:cap, a in 0:((1 << n) - 1)
+            data = [isodd(a >> j) for j in 0:(n - 1)]
+            v = UVec{UInt8}(data)
+            for first in 1:(n + 1), last in (first - 1):n
+                for m in 0:(cap - n + last - first + 1), b in 0:((1 << m) - 1)
+                    items = [isodd(b >> j) for j in 0:(m - 1)]
+                    expected = UVec{UInt8}(vcat(data[1:(first - 1)], items, data[(last + 1):end]))
+                    @test spliceinto(v, first:last, items) === expected
+                    @test spliceinto(v, first:last, UVec{UInt8}(items)) === expected
+                end
+            end
+        end
+    end
+
+    @testset "spliceinto ranges across backing widths" failfast = true begin
+        for D in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512), S in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
+            cap = capacity(UVec{D})
+            for n in unique((0, 1, cap ÷ 2, cap))
+                for first in unique((1, 1 + n ÷ 2, n + 1)), last in unique((first - 1, first - 1 + (n - first + 1) ÷ 2, n))
+                    limit = min(cap - n + last - first + 1, capacity(UVec{S}))
+                    for m in unique((0, min(1, limit), limit ÷ 2, limit))
+                        for data in (trues(n), falses(n), isodd.(1:n)), items in (trues(m), falses(m), iseven.(1:m))
+                            v = UVec{D}(data)
+                            expected = UVec{D}(vcat(data[1:(first - 1)], items, data[(last + 1):end]))
+                            @test spliceinto(v, first:last, UVec{S}(items)) === expected
+                            if S === D
+                                @test spliceinto(v, first:last, view(items, :)) === expected
+                            end
+                        end
+                    end
+                end
+            end
+            full = UVec{D}(trues(cap))
+            @test_throws ArgumentError spliceinto(full, 1:1, UVec{S}([false, true]))
+            @test_throws ArgumentError spliceinto(full, (cap + 1):cap, UVec{S}([true]))
+        end
+    end
+
+    @testset "spliceinto range boundaries and conversions" failfast = true begin
+        v = UVec{UInt8}([1, 0, 1])
+        expected = UVec{UInt8}([1, 0])
+        @test spliceinto(v, 2:3, [0.0]) === expected
+        for items in ([false], UVec{UInt8}([false]), UVec{UInt16}([false]))
+            for I in (Int8, UInt8, Int128, UInt128, BigInt)
+                @test spliceinto(v, I(2):I(3), items) === expected
+                @test spliceinto(v, I(4):I(3), items) === UVec{UInt8}([1, 0, 1, 0])
+            end
+            @test (@inbounds spliceinto(v, 2:3, items)) === expected
+        end
+        for items in (Bool[], [false], UVec{UInt8}(), UVec{UInt8}([false]))
+            for r in (-1:1, 0:0, 2:4, 0:-1, 5:4, 1:typemax(UInt128), (big(2)^128 + 1):(big(2)^128 + 2))
+                @test_throws BoundsError spliceinto(v, r, items)
+            end
+            @test_throws BoundsError spliceinto(UVec{UInt8}(), 1:1, items)
+        end
+        @test_throws ArgumentError spliceinto(v, 2:2, falses(4))
+        for items in ([2], [-1], [0.5])
+            @test_throws InexactError spliceinto(v, 2:3, items)
+            @test_throws InexactError @inbounds spliceinto(v, 2:3, items)
+        end
+        @test_throws MethodError spliceinto(v, 2:3, [:invalid])
+        @test v === UVec{UInt8}([1, 0, 1])
+    end
+
+end
+
 @testset "Conversion capacity boundaries" failfast = true begin
     for S in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512), D in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
         len = min(capacity(UVec{S}), capacity(UVec{D}))
