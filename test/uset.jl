@@ -27,6 +27,10 @@
         @test first(high) === UInt32(max_member)
         @test last(low) === UInt32(0)
         @test pop(high) == (USet{T}(), UInt32(max_member))
+        @test pop(high, max_member) === (USet{T}(), UInt32(max_member))
+        @test pop(endpoints, max_member) === (low, UInt32(max_member))
+        @test pop(endpoints, 0) === (high, UInt32(0))
+        @test_throws ArgumentError pop(endpoints, max_member + 1)
         @test popfirst(low) == (USet{T}(), UInt32(0))
         @test_throws ArgumentError USet{T}([max_member + 1])
     end
@@ -148,6 +152,7 @@ end
         # request elision of the documented bounds/nonempty checks.
         @test (@inbounds push(s, 1)) == USet{UInt8}([0, 1, 3, 7])
         @test (@inbounds pop(s)) == (USet{UInt8}([0, 3]), UInt32(7))
+        @test (@inbounds pop(s, 3)) === (USet{UInt8}([0, 7]), UInt32(3))
         @test (@inbounds popfirst(s)) == (USet{UInt8}([3, 7]), UInt32(0))
         @test (@inbounds first(s)) === UInt32(0)
         @test (@inbounds last(s)) === UInt32(7)
@@ -189,22 +194,25 @@ end
     end
 
     @testset "pop member" failfast = true begin
-        # pop(s, i) is immutable and treats absent or unrepresentable members as
-        # no-ops.
-        @test pop(s, 3) == USet{UInt8}([0, 7])
-        @test pop(s, 4) === s
-        @test pop(s, -1) === s
-        @test pop(s, 8) === s
-        @test pop(s, 0) === USet{UInt8}([3, 7])
-        @test pop(s, 7) === USet{UInt8}([0, 3])
-        @test pop(USet{UInt8}([7]), 7) === USet{UInt8}()
-        @test pop(USet{UInt8}(), 0) === USet{UInt8}()
-        for I in (Int8, UInt8, Int128, UInt128, BigInt)
-            @test pop(s, I(3)) === USet{UInt8}([0, 7])
+        # Targeted pop returns the new set and removed UInt32 member, and
+        # rejects absent members before truncating the requested integer.
+        remaining, element = @inferred pop(s, 3)
+        @test remaining === USet{UInt8}([0, 7])
+        @test element === UInt32(3)
+        @test_throws ArgumentError pop(s, 4)
+        @test_throws ArgumentError pop(s, -1)
+        @test_throws ArgumentError pop(s, 8)
+        @test pop(s, 0) === (USet{UInt8}([3, 7]), UInt32(0))
+        @test pop(s, 7) === (USet{UInt8}([0, 3]), UInt32(7))
+        @test pop(USet{UInt8}([7]), 7) === (USet{UInt8}(), UInt32(7))
+        @test_throws ArgumentError pop(USet{UInt8}(), 0)
+        for I in (Int8, UInt8, Int128, UInt128, UInt256, UInt512, BigInt)
+            @test pop(s, I(3)) === (USet{UInt8}([0, 7]), UInt32(3))
         end
+        @test pop(s, false) === (USet{UInt8}([3, 7]), UInt32(0))
+        @test pop(USet{UInt8}([1]), true) === (USet{UInt8}(), UInt32(1))
         for i in (typemin(Int), typemax(UInt128), big(2)^128 + 3, -big(2)^128 + 3)
-            @test pop(s, i) === s
-            @test (@inbounds pop(s, i)) === s
+            @test_throws ArgumentError pop(s, i)
         end
         @test s == USet{UInt8}([0, 3, 7])
     end
@@ -340,7 +348,10 @@ end
                 @test (i in s) == (i in reference)
             end
             @test push(s, 200) == union(reference, [200])
-            @test pop(s, 129) == setdiff(reference, [129])
+            remaining, item = pop(s, 129)
+            @test remaining isa USet{U}
+            @test remaining == setdiff(reference, [129])
+            @test item === UInt32(129)
             remaining, item = pop(s)
             @test remaining == setdiff(reference, [top])
             @test item === UInt32(top)

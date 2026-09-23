@@ -66,6 +66,9 @@ end
     throw(ArgumentError("$(T) must be nonempty"))
 end
 
+@noinline function throw_member_missing(::Type{T}, i) where {T}
+    throw(ArgumentError("Item $(i) not present in $(T)"))
+end
 
 # Construct one USet from another with different widths: Throw only if s
 # contains an element not representable by destination type.
@@ -228,27 +231,34 @@ function Base.union(x::USet, s1, s2, sets...)
 end
 
 """
-    pop(x::USet{U}, i::Integer)::USet{U}
+    pop(s::USet{U}, i::Integer)::Tuple{USet{U}, UInt32}
 
-Construct a new `USet` equal to `x`, except without `i` as an element.
+Return `(new_s, item)`, where `item` is equal to `i`,
+and `new_s` is a copy of `s` but with `item` removed.
+
+Throw an `ArgumentError` if `i` is not in `s`. This error may be suppressed
+with `@inbounds`, in which case this operation may give nonsensical results.
 
 ```jldoctest
 julia> s = USet{UInt8}([0, 2, 3, 6]);
 
-julia> pop(s, 1) === s
+julia> (new_s, item) = pop(s, 2); item === UInt32(2)
 true
 
-julia> pop(s, 3) == Set([0, 2, 6])
+julia> new_s === typeof(s)([0, 6, 3])
 true
 
-julia> pop(s, 99999) === s
-true
+julia> pop(s, 99999)
+ERROR: ArgumentError: Item 99999 not present in USet{UInt8}
+[...]
 ```
 """
 function pop(x::USet{U}, i::Integer) where {U}
-    can_contain(x, i) || return x
-    mask = ~singlebit(U, i % UInt32)
-    return new_uset(x.x & mask)
+    @boundscheck if !in(i, x)
+        throw_member_missing(USet{U}, i)
+    end
+    i32 = (i % UInt32)::UInt32
+    return (new_uset(x.x & ~singlebit(U, i32)), i32)
 end
 
 Base.intersect(x::USet) = x
