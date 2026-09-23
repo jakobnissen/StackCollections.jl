@@ -62,6 +62,32 @@
     end
 end
 
+@testset "Vector indexing across backing widths" failfast = true begin
+    for U in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
+        T = UVec{U}
+        cap = capacity(T)
+        for n in (0, 1, cap ÷ 2, cap - 1, cap)
+            for data in (falses(n), trues(n), isodd.(1:n), iseven.(1:n))
+                v = T(data)
+                for mask in (falses(n), trues(n), isodd.(1:n), iseven.(1:n))
+                    expected = T(data[mask])
+                    @test v[mask] === expected
+                    @test v[T(mask)] === expected
+                end
+                for idx in (n:-1:1, collect(n:-1:1), 1:2:n)
+                    @test v[idx] === T(data[idx])
+                end
+                if n > 0
+                    for idx in ([n, 1, n], fill(n, cap))
+                        @test v[idx] === T(data[idx])
+                    end
+                    @test_throws ArgumentError v[fill(n, cap + 1)]
+                end
+            end
+        end
+    end
+end
+
 @testset "Vector replacement across backing widths" failfast = true begin
     for U in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
         for len in (1, capacity(UVec{U}) ÷ 2, capacity(UVec{U}))

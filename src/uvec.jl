@@ -12,6 +12,17 @@ when given an empty one, throw an `ArgumentError`. Invalid indices throw a
 Mutable operations are not supported; use `push`, `pushfirst`, `pop`, `popfirst`,
 `deleteat`, and `setindex`
 instead of the corresponding mutable Base operations.
+
+Indexing with an integer vector or range, a Boolean mask, or `:` returns a
+`UVec{U}`. Boolean masks must have the same length as the vector. Integer
+indices may repeat, but the result must fit within `capacity(UVec{U})`.
+
+Most operations on `UVec` that returns boolean vectors, such as `filter`,
+`reverse` and indexing are specialized to return `UVec`. However, it is not
+guaranteed that all methods are implemented and do not fall back to a default
+implementation. However, specialized methods implemented that explicitly return `UVec`
+are guaranteed to not be removed in future minor releases.
+`Base.similar(::UVec, args...)` returns `BitArray`.
 """
 struct UVec{U <: Unsigned} <: AbstractVector{Bool}
     # Bottom length_bits(T) encode the length.
@@ -25,6 +36,13 @@ struct UVec{U <: Unsigned} <: AbstractVector{Bool}
 end
 
 UVec{U}() where {U <: Unsigned} = new_uvec(zero(U))
+
+function UVec{U}(::UndefInitializer, n::Integer) where {U <: Unsigned}
+    if n < 0 || n > capacity(UVec{U})
+        throw_uvec_too_big(UVec{U}, n)
+    end
+    return new_uvec(n % U)
+end
 
 function UVec{U}(itr) where {U <: Unsigned}
     max_capacity = capacity(UVec{U})
@@ -45,6 +63,10 @@ end
 
 @noinline function throw_uvec_too_big(dest::Type{UVec{D}}, source::Type{UVec{S}}) where {S, D}
     throw(ArgumentError("$(source)'s length exceeds capacity of $(dest)"))
+end
+
+@noinline function throw_uvec_too_big(T::Type{UVec{U}}, n::Integer) where {U}
+    throw(ArgumentError("Cannot create $(T) of length $(n); $(n) is not in 0:$(capacity(T))"))
 end
 
 @inline function UVec{T1}(x::UVec{T2}) where {T1 <: Unsigned, T2 <: Unsigned}
@@ -107,7 +129,10 @@ Base.isempty(x::UVec) = iszero(x.x)
 Base.copy(x::UVec) = x
 Base.empty(::UVec{U}) where {U} = UVec{U}()
 Base.IndexStyle(::Type{<:UVec}) = Base.IndexLinear()
-Base.similar(x::UVec) = BitVector(x)
+
+function Base.similar(x::UVec, ::Type{Bool}, axes::NTuple{N, Int}) where {N}
+    return BitArray{N}(undef, axes)
+end
 
 function inbounds_shift(::Type{T}, i::Int) where {T <: UVec}
     return i - 1 + length_bits(T)
@@ -131,6 +156,49 @@ function Base.getindex(v::UVec{U}, idx::UnitRange{<:Integer}) where {U <: Unsign
     # Mask of L payload bits above the length region
     mask = bitmask(U, L, length_bits(UVec{U}))
     return new_uvec((u & mask) | (L % U))
+end
+
+# Boolean ranges are masks, just like other Boolean vectors.
+Base.@propagate_inbounds function Base.getindex(v::UVec{U}, idx::UnitRange{Bool}) where {U <: Unsigned}
+    return _getindex(v, idx)
+end
+
+function Base.getindex(v::UVec{U}, idx::AbstractVector{<:Integer}) where {U <: Unsigned}
+    L = length(idx)
+    @boundscheck if L > capacity(UVec{U})
+        throw_full_uvec()
+    end
+    shift = length_bits(UVec{U})
+    u = zero(U)
+    for i in idx
+        b = v[i]
+        u |= left_shift(b % U, shift)
+        shift += 1
+    end
+    return new_uvec(u | (L % U))
+end
+
+Base.@propagate_inbounds function Base.getindex(v::UVec{U}, idx::AbstractVector{Bool}) where {U <: Unsigned}
+    return _getindex(v, idx)
+end
+
+function _getindex(v::UVec{U}, idx::AbstractVector{Bool}) where {U <: Unsigned}
+    @boundscheck checkbounds(v, idx)
+    u = zero(U)
+    vu = v.x
+
+    # Only selected bits contribute to u and advance the writing position.
+    # Masking the bit avoids a branch and prevents unselected true values
+    # from contaminating a later selected false value.
+    vushift = length_bits(UVec{U})
+    ushift = vushift
+    for element in idx
+        bit = right_shift(vu, vushift) & (element % U)
+        u |= left_shift(bit, ushift)
+        ushift += element % Int
+        vushift += 1
+    end
+    return new_uvec(u | ((ushift - length_bits(UVec{U})) % U))
 end
 
 Base.getindex(v::UVec, ::Colon) = v
@@ -324,6 +392,7 @@ Return a new `UVec` based on `v`, but with the index or indices `idx` removed,
 and all subsequent element shifted downwards to fill the deleted elements.
 
 Throw a `BoundsError` if `idx` is out of bounds for `v`. This can be disabled with `@inbounds`.
+Throw an `ArgumentError` if `idx` is a `UnitRange{Bool}`; mask indices are not supported.
 
 See also: [`pop`](@ref), [`popfirst`](@ref), [`spliceinto`](@ref)
 
@@ -359,6 +428,9 @@ ERROR: BoundsError: attempt to access 4-element UVec{UInt8} at index [4:5]
 end
 
 @inline function deleteat(v::T, idx::UnitRange{<:Integer}) where {U <: Unsigned, T <: UVec{U}}
+    if idx isa UnitRange{Bool}
+        throw(ArgumentError("deleteat with AbstractVector{Bool} indices are not allowed"))
+    end
     isempty(idx) && return v
     @boundscheck checkbounds(v, idx)
     (fst, lst) = (first(idx) % Int, last(idx) % Int)
@@ -439,15 +511,17 @@ end
 
 """
     setindex(v::UVec{U}, item, indices::Integer)::UVec{U}
-    setindex(v::UVec{U}, items, indices::AbstractVector{<:Integer})::UVec{U}
+    setindex(v::UVec{U}, items::AbstractVector, indices::AbstractVector{<:Integer})::UVec{U}
 
 Return a new `UVec{U}` based on `v`, but with the elements at `indices`
 set to `items`.
-The n'th element `items` are converted to `Bool`, then set at the index in the
-returned `UVec` given by the n'th element of `items`.
+Each element of `items` is converted to `Bool` and assigned to the corresponding
+index in `indices`. For repeated indices, the last assignment wins.
+Boolean indices are masks: their length must match `v`, and `items` must contain
+one element per `true` entry.
 
 Throw a `BoundsError` if any index is not an existing index of `v`.
-Else, if `indices` and `items` do not have the same number of elements,
+Else, if the number of selected indices does not match the length of `items`,
 a `DimensionMismatch` error is thrown.
 These errors may be elided with `@inbounds`.
 
@@ -482,6 +556,9 @@ end
     throw(DimensionMismatch("Tried to assign $(nitems) items to $(nindices) indices"))
 end
 
+# The elaborate dispatch here is to avoid the annoying case that we have
+# V{Bool} <: V{<:Integer}, yet they have different semantics when used as
+# indices. This is eventually handled by Base.to_index.
 function setindex(
         v::UVec{U},
         items::AbstractVector,
@@ -493,6 +570,14 @@ function setindex(
     @boundscheck(Li == Lt || throwdimmismatch(Li, Lt))
     iszero(Li) && return v
     return _setindex(v, items, index, Li % Int)
+end
+
+Base.@propagate_inbounds function setindex(
+        v::UVec{U},
+        items::AbstractVector,
+        indices::UnitRange{Bool},
+    ) where {U <: Unsigned}
+    return setindexindices(v, items, indices)
 end
 
 function _setindex(
@@ -530,11 +615,15 @@ function _setindex(
     return new_uvec(u | left_shift(payload % D, dshift))
 end
 
-function setindex(
+Base.@propagate_inbounds function setindex(
         v::UVec{U},
-        items,
+        items::AbstractVector,
         indices::AbstractVector{<:Integer}
     ) where {U <: Unsigned}
+    return setindexindices(v, items, indices)
+end
+
+function setindexindices(v::UVec{U}, items::AbstractVector, indices::AbstractVector{<:Integer}) where {U <: Unsigned}
     @boundscheck checkbounds(v, indices)
     # Normalize Boolean masks to their selected positions without allocating
     # an index vector. Ordinary integer vectors pass through unchanged.
