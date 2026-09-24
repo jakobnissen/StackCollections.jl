@@ -118,6 +118,43 @@ end
         @test_throws BoundsError checkbounds(s, 8)
     end
 
+    @testset "Non-integer membership and equality" begin
+        for value in (0.0, 1.0, 7.0, 1 // 1, 1 + 0im, 1.0 + 0.0im)
+            @test (value in s) === true
+            @test (value in USet{UInt8}()) === false
+        end
+        for value in (
+                -0.0, -1.0, 2.0, 8.0, 0.5, 1 // 2,
+                1.0e100, -1.0e100, big"1e100", Inf, -Inf, NaN,
+                2 + 0im, 1 + 1im, missing, nothing, "1",
+            )
+            @test (value in s) === false
+            @test (value in USet{UInt8}()) === false
+        end
+
+        # Signed zero must remain distinct in either comparison direction.
+        zero_set = USet{UInt8}([0])
+        negative_zero_set = Set([-0.0])
+        @test (zero_set == negative_zero_set) === false
+        @test (negative_zero_set == zero_set) === false
+        @test isequal(zero_set, negative_zero_set) === false
+        @test isequal(negative_zero_set, zero_set) === false
+
+        # Numerically equivalent sets compare and hash equally, including
+        # when used interchangeably as dictionary keys.
+        for value in (0.0, 1.0, 1 // 1, 1 + 0im, 1.0 + 0.0im)
+            integer_set = USet{UInt8}([Int(real(value))])
+            other_set = Set([value])
+            @test (integer_set == other_set) === true
+            @test (other_set == integer_set) === true
+            @test isequal(integer_set, other_set) === true
+            @test isequal(other_set, integer_set) === true
+            @test hash(integer_set) == hash(other_set)
+            @test get(Dict(integer_set => :found), other_set, :absent) === :found
+            @test get(Dict(other_set => :found), integer_set, :absent) === :found
+        end
+    end
+
     @testset "Ordering and extrema" begin
         # Since iteration is sorted, the order and extrema methods report the
         # lowest and highest set bits directly.

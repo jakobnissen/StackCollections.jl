@@ -112,16 +112,43 @@ julia> can_contain(USet{UInt64}, 55)
 true
 ```
 """
+function can_contain(::Type{T}, i::Number) where {T <: USet}
+    isinteger(i) || return false
+    # USet cannot contain -0.0 as it is not isequal with 0
+    signbit(i) && return false
+    return i <= maximum_member(T)
+end
+
 can_contain(::Type{T}, i::Integer) where {T <: USet} = 0 <= i <= maximum_member(T)
-can_contain(::T, i::Integer) where {T <: USet} = can_contain(T, i)
+can_contain(::T, i::Number) where {T <: USet} = can_contain(T, i)
 
 Base.empty(::USet{U}) where {U} = USet{U}()
 Base.length(x::USet) = count_ones(x.x)
 Base.isempty(x::USet) = iszero(x.x)
-
-# TODO: Determine if we want this method
 Base.copy(x::USet) = x
 
+"""
+    Integer(x::USet{U})::U
+
+Get the integer backing `x`. This integer is guaranteed to be a bit mask
+where the N-th zero-indexed bit from lowest to highest bit represents the
+presence of the element N in `x`.
+
+See also: [`uset_from_bits`](@ref)
+
+# Examples
+```jldoctest
+julia> s = USet{UInt16}([4, 11, 8, 2, 6]);
+
+julia> u = Integer(s);
+
+julia> u === 0x0954
+true
+
+julia> uset_from_bits(u) === s
+true
+```
+"""
 Base.Integer(x::USet) = x.x
 
 """
@@ -162,6 +189,17 @@ function Base.in(i::Integer, x::USet)
     return testbit(x.x, i % UInt32)
 end
 
+function Base.in(i::Real, x::USet)
+    isinteger(i) || return false
+    # -0.0 is integer, we check for it here
+    iszero(i) && signbit(i) && return false
+    # Guard against floats outside the integer range
+    can_contain(x, i) || return false
+    return in(Integer(i)::Integer, x)
+end
+
+Base.in(i, x::USet) = any(j -> isequal(i, j), x)
+
 Base.checkbounds(::Type{Bool}, x::USet, i::Integer) = can_contain(x, i)
 
 function Base.checkbounds(x::USet, i::Integer)
@@ -177,6 +215,17 @@ function push_inbounds(x::USet{U}, i::UInt32) where {U}
     u = x.x
     u |= singlebit(U, i)
     return new_uset(u)
+end
+
+# TODO: Check correctness of this with an AI agent!
+function push_if_inbounds(x::USet{U}, i::Number) where {U}
+    isinteger(i) || return x
+    # Signbit handles -0.0
+    signbit(i) && return x
+    i > maximum_member(typeof(x)) && return x
+    # We now checked all negative values, non-integer values, and values
+    # above maximum. So, we can unsafely convert to UInt32.
+    return push_inbounds(x, unsafe_trunc(UInt32, i))
 end
 
 function push_if_inbounds(x::USet{U}, i::Integer) where {U}
@@ -308,6 +357,7 @@ end
 function Base.setdiff(x::USet, set)
     y = typeof(x)()
     for i in set
+        i isa Number || continue
         y = push_if_inbounds(y, i)
         # Short circuit - if the setdiff is already empty,
         # no need to continue getting elements

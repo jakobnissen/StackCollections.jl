@@ -517,8 +517,9 @@ Return a new `UVec{U}` based on `v`, but with the elements at `indices`
 set to `items`.
 Each element of `items` is converted to `Bool` and assigned to the corresponding
 index in `indices`. For repeated indices, the last assignment wins.
+
 Boolean indices are masks: their length must match `v`, and `items` must contain
-one element per `true` entry.
+`count(indices)` items.
 
 Throw a `BoundsError` if any index is not an existing index of `v`.
 Else, if the number of selected indices does not match the length of `items`,
@@ -719,10 +720,12 @@ end
 """
     spliceinto(v::UVec{U}, i::Integer, e::AbstractVector)::UVec{U}
 
-Return a copy of `v` with the elements of `e` (converted to `Bool`) inserted positions `i:i+length(v)-1`,
-and the previously existing elements at `i:length(v)` shifted to higher indices.
+Return a copy of `v` with the elements of `e` (converted to `Bool`) inserted positions
+`i:i+length(e)-1`, and the previously existing elements at `i:length(v)` 
+shifted to higher indices.
 
-Throw a `BoundsError` if `i` is not in `1:length(v)+1`. Throw an `ArgumentError` if the resulting `UVec{U}`'s
+Throw a `BoundsError` if `i` is not in `1:length(v)+1`.
+Throw an `ArgumentError` if the resulting `UVec{U}`'s
 length would exceed `capacity(UVec{U})`. Both exceptions be suppressed with `@inbounds`.
 
 See also: [`insert`](@ref), [`deleteat`](@ref), [`push`](@ref)
@@ -774,11 +777,13 @@ end
 """
     spliceinto(v::UVec{U}, i::UnitRange, e::AbstractVector)::UVec{U}
 
-Return a copy of `v` with the indices at `i` deleted, and the  elements of `e` (converted to `Bool`)
-inserted at the deletion site. Subsequent elements are shifted to higher indices.
+Return a copy of `v` with the indices at `i` deleted, and the  elements of `e`
+(converted to `Bool`) inserted at the deletion site.
+Elements in `v` after `i` are shifted to immediately after the inserted `e`.
 
-Throw a `BoundsError` if `i` is not in `1:length(v)+1`. Throw an `ArgumentError` if the resulting `UVec{U}`'s
-length would exceed `capacity(UVec{U})`. Both exceptions be suppressed with `@inbounds`.
+Throw a `BoundsError` if `i` is not in `1:length(v)+1`. Throw an `ArgumentError`
+if the resulting `UVec{U}`'s length would exceed `capacity(UVec{U})`. 
+Both exceptions be suppressed with `@inbounds`.
 
 This is equivalent to `spliceinto(deleteat(v, i), first(i), e)`, but more efficient.
 
