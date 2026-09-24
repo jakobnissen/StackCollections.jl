@@ -288,7 +288,13 @@ end
         @test intersect(a, (1, 3, 8)) == USet{UInt8}([1, 3])
         @test intersect(a, b, USet{UInt8}([1, 3]), [3]) == USet{UInt8}([3])
         @test intersect(a, [8], [0]) == USet{UInt8}()
-        @test_throws MethodError intersect(a, [:not_an_integer])
+        # Numbers are compared by isequal; other element types throw.
+        @test intersect(a, [1.0, 2.0, 3 // 1, 7 + 0im]) == USet{UInt8}([1, 3, 7])
+        @test intersect(a, [0.5, -0.0, 1.0 - 0.0im]) == USet{UInt8}()
+        for bad in (:not_an_integer, missing, nothing, "1")
+            @test_throws MethodError intersect(a, [bad])
+            @test_throws MethodError intersect(a, [1, bad])
+        end
     end
 
     @testset "Setdiff" begin
@@ -306,7 +312,60 @@ end
         @test setdiff(a, [0, 1, 3, 7, 8]) == USet{UInt8}()
         @test setdiff(a, b, USet{UInt8}([0]), [7]) == USet{UInt8}()
         @test setdiff(a, a, [0]) == USet{UInt8}()
-        @test_throws MethodError setdiff(a, [:not_an_integer])
+        # Numbers are compared by isequal; other element types throw.
+        @test setdiff(a, [1.0, 2.0, 3 // 1, 7 + 0im]) == USet{UInt8}([0])
+        @test setdiff(a, [0.5, -0.0, 1.0 - 0.0im]) == a
+        for bad in (:not_an_integer, missing, nothing, "1")
+            @test_throws MethodError setdiff(a, [bad])
+            @test_throws MethodError setdiff(a, [1, bad])
+        end
+    end
+
+    @testset "Non-integer numbers" begin
+        # Set operations and membership must agree with isequal against every
+        # possible member. These values are numerically close to, or equal to,
+        # a member, but only some are isequal to one. In particular signed
+        # zeros, values that would wrap around when truncated to UInt32, and
+        # values too large for any integer type must be ignored.
+        values = (
+            # Integer-valued reals of various types
+            0.0, 1.0, 7.0, 8.0, Float16(3), Float32(7), big(1.0), 3 // 1, 0 // 1,
+            -0 // 1, true, false,
+            # Negative and signed zero
+            -0.0, -1.0, big(-0.0), Float16(-0.0), -1 // 1,
+            # Non-integer or non-finite
+            0.5, 1 // 2, nextfloat(1.0), prevfloat(7.0), NaN, Inf, -Inf, π,
+            # Large values, including ones congruent to a member modulo 2^32
+            2.0^32, 2.0^32 + 1, 2.0^32 + 7, 1.0e100, -1.0e100, big"1e100",
+            float(typemax(UInt32)), 255.0, 511.0, Float16(255),
+            # Complex values, where the imaginary part must be +0
+            0 + 0im, 1 + 0im, 7 + 0im, 1.0 + 0.0im, 1.0 - 0.0im, -0.0 + 0.0im,
+            0.0 - 0.0im, 3 // 1 + 0im, big(1.0) + 0im, Complex(true, false),
+            Complex(false, true), im, 1 + 1im, 1.0 + NaN * im, NaN + 0im,
+            2.0^32 + 1 + 0im,
+        )
+        for U in (UInt8, UInt256)
+            T = USet{U}
+            members = 0:(8 * sizeof(U) - 1)
+            s = T([0, 1, 3, 7, 255 % (8 * sizeof(U))])
+            for v in values
+                representable = any(j -> isequal(v, j), members)
+                expected = filter(j -> isequal(v, j), s)
+                @test can_contain(T, v) === representable
+                @test can_contain(s, v) === representable
+                @test (v in s) === !isempty(expected)
+                @test intersect(s, [v]) === expected
+                @test intersect(s, (v,)) === expected
+                @test setdiff(s, [v]) === setdiff(s, expected)
+                @test setdiff(s, Set([v])) === setdiff(s, expected)
+                @test intersect(s, [v, 1]) === union(expected, intersect(s, [1]))
+                @test setdiff(s, [v, 1]) === setdiff(s, expected, [1])
+            end
+            # Agreement with Base sets containing the same values
+            s_ref = Set{Any}(s)
+            @test Set{Any}(intersect(s, collect(values))) == intersect(s_ref, values)
+            @test Set{Any}(setdiff(s, collect(values))) == setdiff(s_ref, values)
+        end
     end
 
     @testset "Symdiff" begin

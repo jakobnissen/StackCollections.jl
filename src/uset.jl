@@ -11,6 +11,10 @@ Operations that would introduce an unrepresentable member, or require a
 nonempty set when given an empty one, throw an `ArgumentError`. These checks
 can sometimes be disabled locally with `@inbounds`.
 
+`intersect` and `setdiff` with a generic collection accept `Real` and `Complex`
+elements, and ignore those that are not `isequal` to a representable member,
+such as `0.5`, `-0.0` or `1.0 - 0.0im`. Other element types throw a `MethodError`.
+
 Mutable operations are not supported; use `push`, `pop` and `popfirst`
 instead of the corresponding mutable Base operations.
 
@@ -99,10 +103,12 @@ Base.convert(::Type{USet{U}}, x::USet{U}) where {U} = x
 maximum_member(::Type{USet{U}}) where {U} = (bitwidth(U) - 1) % UInt32
 
 """
-    can_contain(::Type{<:USet{U}}, i::Integer)::Bool
+    can_contain(::Type{<:USet{U}}, i::Union{Real, Complex})::Bool
 
-Return whether a `USet{U}` can contain an `i`, by checking if `i`
-is in `0:maximum_member(USet{U})`.
+Return whether a `USet{U}` can contain an element `isequal` to `i`, by checking if
+`i` is an integer in `0:maximum_member(USet{U})`.
+Values that are numerically equal to such an integer, but not `isequal` to it,
+such as `-0.0` or `1.0 - 0.0im`, cannot be contained.
 
 ```jldoctest
 julia> can_contain(USet{UInt32}, 55)
@@ -110,17 +116,35 @@ false
 
 julia> can_contain(USet{UInt64}, 55)
 true
+
+julia> can_contain(USet{UInt8}, 2.0 + 0im)
+true
+
+julia> can_contain(USet{UInt8}, -0.0)
+false
 ```
 """
-function can_contain(::Type{T}, i::Number) where {T <: USet}
-    isinteger(i) || return false
-    # USet cannot contain -0.0 as it is not isequal with 0
-    signbit(i) && return false
-    return i <= maximum_member(T)
+can_contain(::Type{T}, i::Integer) where {T <: USet} = 0 <= i <= maximum_member(T)
+
+# The signbit check rejects -0.0, which is not isequal to 0
+function can_contain(::Type{T}, i::Real) where {T <: USet}
+    return isinteger(i) && !signbit(i) && i <= maximum_member(T)
 end
 
-can_contain(::Type{T}, i::Integer) where {T <: USet} = 0 <= i <= maximum_member(T)
-can_contain(::T, i::Number) where {T <: USet} = can_contain(T, i)
+# A complex number is only isequal to a real if its imaginary part is +0
+function can_contain(::Type{T}, z::Complex) where {T <: USet}
+    return is_positive_zero(imag(z)) && can_contain(T, real(z))
+end
+
+can_contain(::T, i::Union{Real, Complex}) where {T <: USet} = can_contain(T, i)
+
+is_positive_zero(x::Real) = iszero(x) & !signbit(x)
+
+# Get the member isequal to `i`. Only valid if `can_contain(T, i)`.
+unchecked_member(i::Integer) = i % UInt32
+unchecked_member(i::AbstractFloat) = unsafe_trunc(UInt32, i)
+unchecked_member(i::Real) = Integer(i) % UInt32
+unchecked_member(z::Complex) = unchecked_member(real(z))
 
 Base.empty(::USet{U}) where {U} = USet{U}()
 Base.length(x::USet) = count_ones(x.x)
@@ -184,20 +208,14 @@ function Base.iterate(x::USet{U}, state::U = x.x) where {U}
     return (tz % UInt32, clearlowest(state))
 end
 
-function Base.in(i::Integer, x::USet)
+function Base.in(i::Union{Real, Complex}, x::USet)
     can_contain(x, i) || return false
-    return testbit(x.x, i % UInt32)
+    return testbit(x.x, unchecked_member(i))
 end
 
-function Base.in(i::Real, x::USet)
-    isinteger(i) || return false
-    # -0.0 is integer, we check for it here
-    iszero(i) && signbit(i) && return false
-    # Guard against floats outside the integer range
-    can_contain(x, i) || return false
-    return in(Integer(i)::Integer, x)
-end
-
+# Fallback for other types, which could in principle be isequal to an integer.
+# Set operations reject these, but `in` must not throw, since e.g. `==` between
+# sets relies on it.
 Base.in(i, x::USet) = any(j -> isequal(i, j), x)
 
 Base.checkbounds(::Type{Bool}, x::USet, i::Integer) = can_contain(x, i)
@@ -217,20 +235,11 @@ function push_inbounds(x::USet{U}, i::UInt32) where {U}
     return new_uset(u)
 end
 
-# TODO: Check correctness of this with an AI agent!
-function push_if_inbounds(x::USet{U}, i::Number) where {U}
-    isinteger(i) || return x
-    # Signbit handles -0.0
-    signbit(i) && return x
-    i > maximum_member(typeof(x)) && return x
-    # We now checked all negative values, non-integer values, and values
-    # above maximum. So, we can unsafely convert to UInt32.
-    return push_inbounds(x, unsafe_trunc(UInt32, i))
-end
-
-function push_if_inbounds(x::USet{U}, i::Integer) where {U}
+# Push the member isequal to `i`, if any. Other types deliberately have no method,
+# so that set operations throw a MethodError instead of doing a linear scan.
+function push_if_inbounds(x::USet, i::Union{Real, Complex})
     can_contain(x, i) || return x
-    return push_inbounds(x, i % UInt32)
+    return push_inbounds(x, unchecked_member(i))
 end
 
 # This method should be used with at least 3 args, so we need both a and b,
@@ -325,8 +334,8 @@ end
 
 function Base.intersect(x::USet, set)
     # We construct a typeof(x) containing only the elements that can
-    # be stored in the types; integers out of bounds are simply ignored.
-    # Non-Integer elements throw a MethodError
+    # be stored in the types; numbers not isequal to any possible member are
+    # simply ignored. Elements that are not Real or Complex throw a MethodError
     y = typeof(x)()
     for i in set
         y = push_if_inbounds(y, i)
@@ -357,7 +366,6 @@ end
 function Base.setdiff(x::USet, set)
     y = typeof(x)()
     for i in set
-        i isa Number || continue
         y = push_if_inbounds(y, i)
         # Short circuit - if the setdiff is already empty,
         # no need to continue getting elements
