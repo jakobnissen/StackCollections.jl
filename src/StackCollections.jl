@@ -45,7 +45,7 @@ end
 @inline clearlowest(x::Unsigned) = x & (x - one(x))
 
 """
-    pop(collection::Union{Uset, UVec}) -> (new_collection, item)
+    pop(collection::Union{USet, UVec}) -> (new_collection, item)
 
 Create a new collection of the same type as the input, but with the last element
 removed. The new collection and the removed element is returned as a tuple.
@@ -69,7 +69,7 @@ true
 function pop end
 
 """
-    popfirst(collection::Union{Uset, UVec}) -> (new_collection, item)
+    popfirst(collection::Union{USet, UVec}) -> (new_collection, item)
 
 Create a new collection of the same type as the input, but with the first element
 removed. The new collection and the removed element is returned as a tuple.

@@ -77,11 +77,11 @@ end
 # Construct one USet from another with different widths: Throw only if s
 # contains an element not representable by destination type.
 @inline function USet{D}(s::USet{S}) where {D, S}
-    @boundscheck if bitwidth(D) < bitwidth(S) && !isempty(s)
-        largest = highestbit(s.x) % UInt32
-        largest > maximum_member(USet{D}) && throw_uset_oob(USet{D}, largest)
-    end
-    return new_uset(s.x % D)
+    u = s.x % D
+    # s is representable iff truncation lost no bits. When widening, this
+    # comparison is trivially true and compiled away.
+    @boundscheck u % S == s.x || throw_uset_oob(USet{D}, highestbit(s.x))
+    return new_uset(u)
 end
 
 USet{U}() where {U} = new_uset(zero(U))
@@ -221,7 +221,11 @@ Base.in(i, x::USet) = any(j -> isequal(i, j), x)
 Base.checkbounds(::Type{Bool}, x::USet, i::Integer) = can_contain(x, i)
 
 function Base.checkbounds(x::USet, i::Integer)
-    return Base.checkbounds(Bool, x, i) || throw(BoundsError(x, i))
+    return if Base.checkbounds(Bool, x, i)
+        nothing
+    else
+        throw(BoundsError(x, i))
+    end
 end
 
 @inline function push(x::USet{U}, i::Integer) where {U}
@@ -243,12 +247,10 @@ function push_if_inbounds(x::USet, i::Union{Real, Complex})
 end
 
 # This method should be used with at least 3 args, so we need both a and b,
-# since xs may be empty
-function push(x::USet{U}, a::Integer, b::Integer, xs::Vararg{Integer}) where {U}
-    for i in (a, b, xs...)
-        x = push(x, i)
-    end
-    return x
+# since xs may be empty. Recursion, unlike a loop, stays type stable when the
+# integers have different types.
+Base.@propagate_inbounds function push(x::USet, a::Integer, b::Integer, xs::Vararg{Integer})
+    return push(push(x, a), b, xs...)
 end
 
 @inline function pop(x::USet{U}) where {U}
@@ -281,11 +283,9 @@ end
 
 Base.@propagate_inbounds Base.union(x::USet, set) = union(x, typeof(x)(set))
 
-function Base.union(x::USet, s1, s2, sets...)
-    for set in (s1, s2, sets...)
-        x = union(x, set)
-    end
-    return x
+# Recursion, unlike a loop, stays type stable when the sets have different types.
+Base.@propagate_inbounds function Base.union(x::USet, s1, s2, sets...)
+    return union(union(x, s1), s2, sets...)
 end
 
 """
@@ -311,7 +311,7 @@ ERROR: ArgumentError: Item 99999 not present in USet{UInt8}
 [...]
 ```
 """
-function pop(x::USet{U}, i::Integer) where {U}
+@inline function pop(x::USet{U}, i::Integer) where {U}
     @boundscheck if !in(i, x)
         throw_member_missing(USet{U}, i)
     end
@@ -344,11 +344,7 @@ function Base.intersect(x::USet, set)
 end
 
 function Base.intersect(x::USet, s1, s2, sets...)
-    for set in (s1, s2, sets...)
-        x = intersect(x, set)
-        isempty(x) && return x
-    end
-    return x
+    return intersect(intersect(x, s1), s2, sets...)
 end
 
 Base.setdiff(x::USet) = x
@@ -375,11 +371,7 @@ function Base.setdiff(x::USet, set)
 end
 
 function Base.setdiff(x::USet, s1, s2, sets...)
-    for set in (s1, s2, sets...)
-        x = setdiff(x, set)
-        isempty(x) && return x
-    end
-    return x
+    return setdiff(setdiff(x, s1), s2, sets...)
 end
 
 Base.symdiff(x::USet) = x
@@ -398,11 +390,8 @@ Base.@propagate_inbounds function Base.symdiff(x::USet, set)
     return symdiff(x, typeof(x)(set))
 end
 
-function Base.symdiff(x::USet, s1, s2, sets...)
-    for set in (s1, s2, sets...)
-        x = symdiff(x, set)
-    end
-    return x
+Base.@propagate_inbounds function Base.symdiff(x::USet, s1, s2, sets...)
+    return symdiff(symdiff(x, s1), s2, sets...)
 end
 
 Base.issorted(::USet) = true
@@ -429,7 +418,7 @@ function Base.filter(pred, x::USet)
     y = typeof(x)()
     for i in x
         if pred(i)
-            y = push(y, i)
+            y = push_inbounds(y, i)
         end
     end
     return y
@@ -438,6 +427,18 @@ end
 # Exploit the bitwise setdiff when both operands are USets. The Base fallback
 # handles other collection types.
 Base.issubset(a::USet, b::USet) = isempty(setdiff(a, b))
+
+# Zero-extending the narrower set preserves its members, so the sets are
+# equal iff the extended integers are. The type comparison is compile time.
+function Base.:(==)(a::USet{A}, b::USet{B}) where {A, B}
+    return if bitwidth(A) >= bitwidth(B)
+        a.x == b.x % A
+    else
+        a.x % B == b.x
+    end
+end
+
+Base.:⊊(a::USet, b::USet) = issubset(a, b) & !issubset(b, a)
 
 # The generic isdisjoint is optimial when b is generic
 Base.isdisjoint(a::USet, b::USet) = isempty(intersect(a, b))

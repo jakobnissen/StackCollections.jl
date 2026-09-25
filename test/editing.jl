@@ -43,9 +43,9 @@
                         for j in unique((i, i + (len - i) ÷ 2, len))
                             @test deleteat(v, i:j) === T(deleteat!(copy(data), i:j))
                             # Includes positive, zero and negative reversal offsets.
-                            # Nontrivial reversal needs bitreverse, which
-                            # BitIntegers 0.3.7 does not implement.
-                            @test reverse(v, i, j) === T(reverse(data, i, j)) broken = i < j && !hasmethod(bitreverse, Tuple{U})
+                            # Reversal needs bitreverse, which BitIntegers 0.3.7
+                            # does not implement.
+                            @test reverse(v, i, j) === T(reverse(data, i, j)) broken = !hasmethod(bitreverse, Tuple{U})
                         end
                     end
                     @test deleteat(v, 1:len) === T()

@@ -57,6 +57,23 @@ end
         @test v != UVec{UInt8}([1, 0, 1])
         @test UVec{UInt8}() == UVec{UInt128}()
         @test UVec{UInt8}([false]) != UVec{UInt8}()
+        @test UVec{UInt128}(falses(9)) != UVec{UInt8}(falses(5))
+        @test UVec{UInt128}([1, 0, 1, 1]) != UVec{UInt8}([1, 0, 1, 0])
+        @test UVec{UInt8}([1, 0]) != UVec{UInt128}([1, 0, 0])
+        @test isequal(v, UVec{UInt16}([1, 0, 1, 1]))
+        @test !isequal(v, UVec{UInt8}([1, 0, 1]))
+    end
+
+    @testset "count, any and all" begin
+        for data in ([], [0], [1], [1, 0], [0, 1], [1, 1], [0, 0], [1, 0, 1, 1, 1])
+            w = UVec{UInt8}(data)
+            @test count(w) === count(Bool.(data))
+            @test any(w) === any(Bool.(data))
+            @test all(w) === all(Bool.(data))
+        end
+        @test count(v; init = 10) == 13
+        @test all(UVec{UInt64}(trues(capacity(UVec{UInt64}))))
+        @test !all(UVec{UInt64}([trues(capacity(UVec{UInt64}) - 1); false]))
     end
 
     @testset "Iteration and indexing" failfast = true begin
@@ -287,6 +304,11 @@ end
         @test append(v, (0, 1.0)) === appended
         @test append(v, (i for i in (0, 1))) === appended
         @test append(v, UVec{UInt16}([0, 1])) === appended
+        @test append(v, UVec{UInt8}([0, 1])) === appended
+        @test append(v, UVec{UInt128}()) === v
+        @test (@inbounds append(v, UVec{UInt8}([0, 1]))) === appended
+        @test_throws ArgumentError append(appended, UVec{UInt8}([0]))
+        @test_throws ArgumentError append(v, UVec{UInt128}([0, 1, 0]))
         @test append(v, 0) === UVec{UInt8}([1, 0, 1, 0])
         @test append(UVec{UInt8}(), v) === v
         @test append(v, ()) === v
@@ -481,6 +503,16 @@ end
         @test reverse(v, 3, 3) === v
         @test reverse(v, 4, 2) === v
         @test reverse(UVec{UInt8}(), 1, 0) === UVec{UInt8}()
+        # Like Base, no-op ranges are not bounds checked
+        @test reverse(v, 10, 10) === v
+        @test reverse(v, -3, -5) === v
+        @test reverse(v, typemax(UInt), 3) === v
+        @test reverse(v, big(2)^70, 5) === v
+        @test_throws BoundsError reverse(v, 0, 2)
+        @test_throws BoundsError reverse(v, 4, 6)
+        full = UVec{UInt64}(isodd.(1:capacity(UVec{UInt64})))
+        @test reverse(full) === UVec{UInt64}(reverse(collect(full)))
+        @test reverse(full, 2, length(full)) === UVec{UInt64}(reverse(collect(full), 2, length(full)))
         @test (@inbounds reverse(v, 2, 4)) === UVec{UInt8}([1, 1, 0, 0, 0])
         @test v === UVec{UInt8}([1, 0, 0, 1, 0])
     end

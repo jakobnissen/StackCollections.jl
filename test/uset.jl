@@ -94,6 +94,9 @@ end
         @test !(s == Set{String}(["0", "1", "3", "7"]))
         @test s != USet{UInt8}([0, 1, 3])
         @test s != Set{UInt32}([0, 1, 3])
+        @test s != USet{UInt16}([0, 1, 3, 7, 8])
+        @test USet{UInt16}([0, 1, 3, 7, 8]) != s
+        @test isequal(s, USet{UInt128}([0, 1, 3, 7]))
     end
 
     @testset "Iteration and membership" begin
@@ -273,6 +276,11 @@ end
         @test union(a, (2, 5)) == USet{UInt8}([0, 1, 2, 3, 5, 7])
         @test union(a, b, USet{UInt8}([4]), [6]) ==
             USet{UInt8}([0, 1, 2, 3, 4, 5, 6, 7])
+        @test union(a, USet{UInt16}([4]), 5:6, [2]) ==
+            USet{UInt8}([0, 1, 2, 3, 4, 5, 6, 7])
+        @test intersect(a, wide, 0:3, [3, 1]) === USet{UInt8}([1, 3])
+        @test setdiff(a, wide, [0], 7:7) === USet{UInt8}()
+        @test symdiff(a, wide, [0], 6:7) === USet{UInt8}([2, 5, 6])
         @test_throws ArgumentError union(a, wide_with_extra)
         @test_throws ArgumentError union(a, [8])
     end
@@ -401,6 +409,11 @@ end
         @test !issubset(a, USet{UInt8}([1, 3]))
         @test issubset(USet{UInt8}(), a)
         @test issubset(USet{UInt8}([1, 3]), Set([1, 3, 8]))
+        @test USet{UInt8}([1, 3]) ⊊ a
+        @test USet{UInt8}([1, 3]) ⊊ USet{UInt16}([1, 3, 8])
+        @test !(a ⊊ a)
+        @test !(USet{UInt16}([1, 3, 8]) ⊊ a)
+        @test a ⊋ USet{UInt8}([1, 3])
     end
 end
 
