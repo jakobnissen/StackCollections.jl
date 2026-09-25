@@ -18,6 +18,8 @@ instead of the corresponding mutable Base operations.
 Indexing with an integer vector or range, a Boolean mask, or `:` returns a
 `UVec{U}`. Boolean masks must have the same length as the vector. Integer
 indices may repeat, but the result must fit within `capacity(UVec{U})`.
+Like `Base`, scalar `Bool` indices are not supported, and throw an `ArgumentError`,
+even with `@inbounds`.
 
 Most operations on `UVec` that returns boolean vectors, such as `filter`,
 `reverse` and indexing are specialized to return `UVec`. However, it is not
@@ -62,6 +64,13 @@ function UVec{U}(itr) where {U <: Unsigned}
 end
 
 @noinline throw_boundserror(v, i) = throw(BoundsError(v, i))
+
+# Like Base, reject scalar Boolean indices, even though Bool <: Integer.
+# Since Boolean vectors are masks, treating `true` as the index 1 would make
+# e.g. `v[[true, true]]` and `[v[true], v[true]]` differ.
+@noinline function throw_bool_index(i::Bool)
+    throw(ArgumentError("invalid index: $(i) of type Bool"))
+end
 
 @noinline function throw_uvec_too_big(dest::Type{UVec{D}}, source::Type{UVec{S}}) where {S, D}
     throw(ArgumentError("$(source)'s length exceeds capacity of $(dest)"))
@@ -140,6 +149,8 @@ function inbounds_shift(::Type{T}, i::Int) where {T <: UVec}
     return i - 1 + length_bits(T)
 end
 
+Base.getindex(::UVec, i::Bool) = throw_bool_index(i)
+
 @inline function Base.getindex(x::UVec, i::Integer)
     @boundscheck Base.checkbounds(x, i)
     i = (i % Int)::Int
@@ -161,7 +172,7 @@ end
 
 # Boolean ranges are masks, just like other Boolean vectors.
 Base.@propagate_inbounds function Base.getindex(v::UVec{U}, idx::UnitRange{Bool}) where {U <: Unsigned}
-    return _getindex(v, idx)
+    return select_mask(v, idx, false)
 end
 
 function Base.getindex(v::UVec{U}, idx::AbstractVector{<:Integer}) where {U <: Unsigned}
@@ -180,11 +191,12 @@ function Base.getindex(v::UVec{U}, idx::AbstractVector{<:Integer}) where {U <: U
 end
 
 Base.@propagate_inbounds function Base.getindex(v::UVec{U}, idx::AbstractVector{Bool}) where {U <: Unsigned}
-    return _getindex(v, idx)
+    return select_mask(v, idx, false)
 end
 
-Base.@propagate_inbounds function _getindex(v::UVec{U}, idx::AbstractVector{Bool}) where {U <: Unsigned}
-    @boundscheck checkbounds(v, idx)
+# Return the elements of `v` at the positions where `mask` is `!invert`.
+Base.@propagate_inbounds function select_mask(v::UVec{U}, mask::AbstractVector{Bool}, invert::Bool) where {U <: Unsigned}
+    @boundscheck checkbounds(v, mask)
     u = zero(U)
     vu = v.x
 
@@ -193,10 +205,11 @@ Base.@propagate_inbounds function _getindex(v::UVec{U}, idx::AbstractVector{Bool
     # from contaminating a later selected false value.
     vushift = length_bits(UVec{U})
     ushift = vushift
-    for element in idx
-        bit = right_shift(vu, vushift) & (element % U)
+    for element in mask
+        selected = element ⊻ invert
+        bit = right_shift(vu, vushift) & (selected % U)
         u |= left_shift(bit, ushift)
-        ushift += element % Int
+        ushift += selected % Int
         vushift += 1
     end
     return new_uvec(u | ((ushift - length_bits(UVec{U})) % U))
@@ -366,6 +379,7 @@ Convert `item` to `Bool`, then return a new `UVec{U}` based on `v`, but with the
 The elements at, or after `idx` is shifted one index up.
 The index `idx` must be in `1:length(v)+1`. Throws a `BoundsError` if `idx` is out of bounds.
 Throw an `ArgumentError` if `v` is at capacity. Both are disabled with `@inbounds`.
+Throw an `ArgumentError` if `idx` is a `Bool`, even with `@inbounds`.
 
 See also: [`spliceinto`](@ref), [`push`](@ref), [`deleteat`](@ref), [`append`](@ref)
 
@@ -384,6 +398,8 @@ ERROR: BoundsError: attempt to access 4-element UVec{UInt8} at index [6]
 [...]
 ```
 """
+insert(::UVec, index::Bool, item) = throw_bool_index(index)
+
 @inline function insert(v::T, index::Integer, item) where {U <: Unsigned, T <: UVec{U}}
     @boundscheck if index < 0x01 || index > (length(v) + 1)
         throw_boundserror(v, index)
@@ -406,12 +422,17 @@ end
 """
     deleteat(v::UVec{U}, idx::Integer)::UVec{U}
     deleteat(v::UVec{U}, idx::UnitRange{<:Integer})::UVec{U}
+    deleteat(v::UVec{U}, mask::AbstractVector{Bool})::UVec{U}
 
 Return a new `UVec` based on `v`, but with the index or indices `idx` removed,
 and all subsequent element shifted downwards to fill the deleted elements.
 
-Throw a `BoundsError` if `idx` is out of bounds for `v`. This can be disabled with `@inbounds`.
-Throw an `ArgumentError` if `idx` is a `UnitRange{Bool}`; mask indices are not supported.
+If a Boolean vector `mask` is passed, including a `UnitRange{Bool}`, it is
+used as a mask, and the elements at positions where `mask` is `true` are removed.
+
+Throw a `BoundsError` if `idx` is out of bounds for `v`, or if `mask` does not
+have the same length as `v`. This can be disabled with `@inbounds`.
+Throw an `ArgumentError` if `idx` is a `Bool`, even with `@inbounds`.
 
 See also: [`pop`](@ref), [`popfirst`](@ref), [`spliceinto`](@ref)
 
@@ -425,11 +446,16 @@ Bool[1, 1]
 julia> deleteat(v, 4) |> print
 Bool[1, 1, 0]
 
+julia> deleteat(v, [true, false, false, true]) |> print
+Bool[1, 0]
+
 julia> deleteat(v, 4:5) |> print
 ERROR: BoundsError: attempt to access 4-element UVec{UInt8} at index [4:5]
 [...]
 ```
 """
+deleteat(::UVec, idx::Bool) = throw_bool_index(idx)
+
 @inline function deleteat(v::T, idx::Integer) where {U <: Unsigned, T <: UVec{U}}
     @boundscheck checkbounds(v, idx)
     i = (idx % Int)::Int
@@ -447,9 +473,6 @@ ERROR: BoundsError: attempt to access 4-element UVec{UInt8} at index [4:5]
 end
 
 @inline function deleteat(v::T, idx::UnitRange{<:Integer}) where {U <: Unsigned, T <: UVec{U}}
-    if idx isa UnitRange{Bool}
-        throw(ArgumentError("deleteat with AbstractVector{Bool} indices are not allowed"))
-    end
     # N.B: An empty range gives L == 0, in which case u1 | u2 == v.x
     @boundscheck checkbounds(v, idx)
     (fst, lst) = (first(idx) % Int, last(idx) % Int)
@@ -465,6 +488,18 @@ end
     u2 = right_shift(v.x, L) & ~mask
 
     return new_uvec(u1 | u2)
+end
+
+# Also resolves the ambiguity between the UnitRange{<:Integer} method above
+# and the AbstractVector{Bool} method below.
+@inline function deleteat(v::UVec, mask::UnitRange{Bool})
+    @boundscheck checkbounds(v, mask)
+    # The true elements of any Boolean range are at positions (2 - first):length
+    return @inbounds deleteat(v, (2 - first(mask)):length(mask))
+end
+
+Base.@propagate_inbounds function deleteat(v::UVec, mask::AbstractVector{Bool})
+    return select_mask(v, mask, true)
 end
 
 @inline function pop(x::T) where {U <: Unsigned, T <: UVec{U}}
@@ -554,8 +589,8 @@ set to `items`.
 Each element of `items` is converted to `Bool` and assigned to the corresponding
 index in `indices`. For repeated indices, the last assignment wins.
 
-Boolean indices are masks: their length must match `v`, and `items` must contain
-`count(indices)` items.
+Boolean vector indices are masks: their length must match `v`, and `items` must contain
+`count(indices)` items. Scalar `Bool` indices throw an `ArgumentError`, even with `@inbounds`.
 
 Throw a `BoundsError` if any index is not an existing index of `v`.
 Else, if the number of selected indices does not match the length of `items`,
@@ -579,6 +614,8 @@ ERROR: DimensionMismatch: Tried to assign 3 items to 2 indices
 [...]
 ```
 """
+setindex(::UVec, v, i::Bool) = throw_bool_index(i)
+
 @inline function setindex(x::UVec{U}, v, i::Integer) where {U}
     @boundscheck Base.checkbounds(x, i)
     vT = convert(Bool, v)::Bool
@@ -767,6 +804,9 @@ Throw an `ArgumentError` if the resulting `UVec{U}`'s
 length would exceed `capacity(UVec{U})`.
 Both exceptions can be suppressed with `@inbounds`.
 
+Boolean indices are not supported: Throw an `ArgumentError` if `i` is a `Bool`,
+even with `@inbounds`.
+
 See also: [`insert`](@ref), [`deleteat`](@ref), [`push`](@ref)
 
 # Examples
@@ -785,6 +825,16 @@ true
 function spliceinto(v::UVec{U}, i, e::AbstractVector) where {U <: Unsigned}
     return spliceinto(v, i, UVec{U}(e)::UVec{U})
 end
+
+spliceinto(::UVec{U}, i::Bool, ::UVec{U}) where {U <: Unsigned} = throw_bool_index(i)
+
+# Base is inconsistent about whether Boolean ranges are masks or integers here,
+# and a mask selecting no elements has no position to insert at, so reject them.
+@noinline function throw_bool_splice(i::UnitRange{Bool})
+    throw(ArgumentError("Boolean ranges are not supported by spliceinto, got $(i)"))
+end
+
+spliceinto(::UVec{U}, i::UnitRange{Bool}, ::UVec{U}) where {U <: Unsigned} = throw_bool_splice(i)
 
 @inline function spliceinto(v::UVec{U}, i::Integer, e::UVec{U}) where {U <: Unsigned}
     L = length(e) + length(v)
@@ -821,8 +871,11 @@ Return a copy of `v` with the indices at `i` deleted, and the  elements of `e`
 Elements in `v` after `i` are shifted to immediately after the inserted `e`.
 
 Throw a `BoundsError` if `i` is not in `1:length(v)+1`. Throw an `ArgumentError`
-if the resulting `UVec{U}`'s length would exceed `capacity(UVec{U})`. 
+if the resulting `UVec{U}`'s length would exceed `capacity(UVec{U})`.
 Both exceptions can be suppressed with `@inbounds`.
+
+Boolean indices are not supported: Throw an `ArgumentError` if `i` is a
+`UnitRange{Bool}`, even with `@inbounds`.
 
 This is equivalent to `spliceinto(deleteat(v, i), first(i), e)`, but more efficient.
 

@@ -204,6 +204,11 @@ end
             @test_throws InexactError @inbounds spliceinto(v, 2, items)
         end
         @test_throws MethodError spliceinto(v, 2, [:invalid])
+        # Boolean indices are rejected, even if they are valid as integers
+        for i in (false, true), items in (Bool[], [false], UVec{UInt8}([false]), UVec{UInt16}([false]))
+            @test_throws ArgumentError spliceinto(v, i, items)
+            @test_throws ArgumentError @inbounds spliceinto(v, i, items)
+        end
         @test v === UVec{UInt8}([1, 0])
     end
 
@@ -335,5 +340,16 @@ end
     @test (@inbounds pushfirst(v, false, true)) === UVec{UInt8}([0, 1, 1, 0, 1])
     @test (@inbounds UVec{UInt16}(v)) === UVec{UInt16}([1, 0, 1])
     @test_throws InexactError @inbounds insert(v, 2, 2)
+    # Like Base, scalar Boolean indices are rejected, even if they are valid as integers
+    for i in (false, true)
+        @test_throws ArgumentError v[i]
+        @test_throws ArgumentError @inbounds v[i]
+        @test_throws ArgumentError setindex(v, false, i)
+        @test_throws ArgumentError @inbounds setindex(v, false, i)
+        @test_throws ArgumentError insert(v, i, false)
+        @test_throws ArgumentError @inbounds insert(v, i, false)
+        @test_throws ArgumentError deleteat(v, i)
+        @test_throws ArgumentError @inbounds deleteat(v, i)
+    end
     @test v === UVec{UInt8}([1, 0, 1])
 end

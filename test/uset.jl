@@ -56,12 +56,12 @@
     @test !can_contain(USet{UInt8}, 8)
 
     # A backing type is required, must be unsigned, and all input members must
-    # be integers representable by that backing type.
+    # be convertible to UInt32 and representable by that backing type.
     @test_throws MethodError USet()
     @test_throws MethodError USet([1, 2])
     @test_throws TypeError USet{Int}()
     @test_throws TypeError USet{BigInt}()
-    @test_throws ArgumentError USet{UInt8}([-1])
+    @test_throws InexactError USet{UInt8}([-1])
     @test_throws ArgumentError USet{UInt8}([8])
     @test_throws ArgumentError USet{UInt8}(USet{UInt16}([8]))
     @test_throws MethodError USet{UInt8}([:not_an_integer])
@@ -116,7 +116,7 @@ end
         @test checkbounds(Bool, s, 7)
         @test !checkbounds(Bool, s, -1)
         @test !checkbounds(Bool, s, 8)
-        @test checkbounds(s, 3) === true
+        @test checkbounds(s, 3) === nothing
         @test_throws BoundsError checkbounds(s, -1)
         @test_throws BoundsError checkbounds(s, 8)
     end
@@ -191,6 +191,7 @@ end
         # Valid operations retain their behavior when callers explicitly
         # request elision of the documented bounds/nonempty checks.
         @test (@inbounds push(s, 1)) == USet{UInt8}([0, 1, 3, 7])
+        @test (@inbounds push(s, 1, 0x02, 4.0)) == USet{UInt8}([0, 1, 2, 3, 4, 7])
         @test (@inbounds pop(s)) == (USet{UInt8}([0, 3]), UInt32(7))
         @test (@inbounds pop(s, 3)) === (USet{UInt8}([0, 7]), UInt32(3))
         @test (@inbounds popfirst(s)) == (USet{UInt8}([3, 7]), UInt32(0))
@@ -209,9 +210,20 @@ end
         @test push(s, 3) == s
         @test push(s, 1, 2, 4) == USet{UInt8}([0, 1, 2, 3, 4, 7])
         @test push(s, 1, 2, 4, 6, 7) == USet{UInt8}([0, 1, 2, 3, 4, 6, 7])
-        @test_throws ArgumentError push(s, -1)
+        @test push(s, 0x01, 2.0, true) == USet{UInt8}([0, 1, 2, 3, 7])
+        @test typeof(push(s, 1, 2)) === typeof(s)
+        @test_throws InexactError push(s, -1)
+        @test_throws InexactError push(s, 1.5)
+        @test_throws InexactError push(s, 1, -1)
+        @test_throws MethodError push(s, "a")
         @test_throws ArgumentError push(s, 8)
         @test_throws ArgumentError push(s, 1, 8)
+        @test_throws ArgumentError push(s, 8, 1)
+        # The first invalid element determines the error
+        @test_throws ArgumentError push(s, 8, -1)
+        @test_throws InexactError push(s, -1, 8)
+        @test_throws InexactError push(s, typemax(Int))
+        @test_throws InexactError push(s, big(2)^40)
     end
 
     @testset "pop" begin

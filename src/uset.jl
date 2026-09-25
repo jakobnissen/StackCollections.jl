@@ -228,9 +228,71 @@ function Base.checkbounds(x::USet, i::Integer)
     end
 end
 
-@inline function push(x::USet{U}, i::Integer) where {U}
-    @boundscheck can_contain(x, i) || throw_uset_oob(typeof(x), i)
-    return push_inbounds(x, i % UInt32)
+"""
+    push(s::USet{U}, i1, is...)::USet{U}
+
+Convert every element of `(i1, is...)` to `UInt32`, then return a new `USet{U}`
+based on `s`, but with the converted elements added.
+
+Throw an `ArgumentError` if any converted element is larger than
+`maximum_member(USet{U})`.
+The check can be disabled locally with `@inbounds`, similar to `BoundsError`s.
+For `Integer` elements, this also disables the check that they can be converted
+to `UInt32`.
+
+See also: [`pop`](@ref), [`can_contain`](@ref)
+
+# Examples
+```jldoctest
+julia> s = USet{UInt8}([1, 4]);
+
+julia> push(s, 0x02) == USet{UInt8}([1, 2, 4])
+true
+
+julia> push(s, 0x02, 3.0, true) == USet{UInt8}([1, 2, 3, 4])
+true
+
+julia> push(s, 8)
+ERROR: ArgumentError: Value out of range for USet{UInt8}: Supports 0:7, got 8
+[...]
+```
+"""
+@inline function push(x::USet, i)
+    (u, ok) = push_member(typeof(x), i)
+    @boundscheck ok || throw_uset_push(typeof(x), i)
+    return push_inbounds(x, u)
+end
+
+@inline function push(x::USet, i1, is...)
+    T = typeof(x)
+    xs = (i1, is...)
+    members = map(i -> push_member(T, i), xs)
+    # Use & instead of all, which short-circuits and so adds a branch per element
+    @boundscheck mapreduce(last, &, members) || throw_uset_push(T, xs...)
+    y = x
+    for (u, _) in members
+        y = push_inbounds(y, u)
+    end
+    return y
+end
+
+# Return the member to push, and whether it is valid for T. Integers avoid the
+# branch in `convert`, and are instead validated with a single range check.
+push_member(::Type{T}, i::Integer) where {T <: USet} = (i % UInt32, can_contain(T, i))
+
+function push_member(::Type{T}, i) where {T <: USet}
+    u = convert(UInt32, i)::UInt32
+    return (u, u <= maximum_member(T))
+end
+
+# Throw the error for the first invalid element, which is an InexactError if
+# it can't be converted to UInt32.
+@noinline function throw_uset_push(::Type{T}, xs...) where {T}
+    for i in xs
+        u = convert(UInt32, i)::UInt32
+        u > maximum_member(T) && throw_uset_oob(T, u)
+    end
+    error("unreachable")
 end
 
 function push_inbounds(x::USet{U}, i::UInt32) where {U}
@@ -244,13 +306,6 @@ end
 function push_if_inbounds(x::USet, i::Union{Real, Complex})
     can_contain(x, i) || return x
     return push_inbounds(x, unchecked_member(i))
-end
-
-# This method should be used with at least 3 args, so we need both a and b,
-# since xs may be empty. Recursion, unlike a loop, stays type stable when the
-# integers have different types.
-Base.@propagate_inbounds function push(x::USet, a::Integer, b::Integer, xs::Vararg{Integer})
-    return push(push(x, a), b, xs...)
 end
 
 @inline function pop(x::USet{U}) where {U}

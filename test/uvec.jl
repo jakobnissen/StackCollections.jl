@@ -201,14 +201,22 @@ end
                     if !isempty(items)
                         @test_throws InexactError setindex(packed, fill(2, length(items)), idx)
                     end
+                    # Like Base, Boolean ranges are masks for deletion
+                    deleted = UVec{UInt8}(deleteat!(copy(data), idx))
+                    @test deleteat(packed, idx) === deleted
+                    @test (@inbounds deleteat(packed, idx)) === deleted
+                    @test deleteat(packed, collect(idx)) === deleted
                 else
                     @test_throws BoundsError packed[idx]
                     @test_throws BoundsError setindex(packed, Bool[], idx)
+                    @test_throws BoundsError deleteat(packed, idx)
                 end
-                # Boolean ranges are explicitly unsupported for deletion,
+                # Boolean ranges are explicitly unsupported for splicing,
                 # even if empty or bounds checks are disabled.
-                @test_throws ArgumentError deleteat(packed, idx)
-                @test_throws ArgumentError @inbounds deleteat(packed, idx)
+                for items in (Bool[], [true], UVec{UInt8}([true]))
+                    @test_throws ArgumentError spliceinto(packed, idx, items)
+                    @test_throws ArgumentError @inbounds spliceinto(packed, idx, items)
+                end
             end
         end
     end
@@ -221,14 +229,19 @@ end
             mask = [isodd(selection >> i) for i in 0:(n - 1)]
             packed = UVec{UInt8}(data)
             expected = UVec{UInt8}(data[mask])
+            deleted = UVec{UInt8}(deleteat!(copy(data), mask))
             for idx in (mask, BitVector(mask), UVec{UInt8}(mask), view(mask, :))
                 @test packed[idx] === expected
                 @test (@inbounds packed[idx]) === expected
+                @test deleteat(packed, idx) === deleted
+                @test (@inbounds deleteat(packed, idx)) === deleted
             end
         end
         for n in (0, 3, 5), mask in (falses(n), trues(n))
             @test_throws BoundsError v[mask]
             @test_throws BoundsError v[collect(mask)]
+            @test_throws BoundsError deleteat(v, mask)
+            @test_throws BoundsError deleteat(v, collect(mask))
         end
     end
 
