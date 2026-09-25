@@ -432,12 +432,12 @@ end
 @testset "Conversion and raw storage" failfast = true begin
     for S in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
         for raw in (zero(S), one(S), S(0xa5), typemax(S), one(S) << (8sizeof(S) - 1))
-            s = uset_from_bits(raw)
+            s = from_bits(USet, raw)
             @test s isa USet{S}
             @test collect(s) == UInt32[i for i in 0:(8sizeof(S) - 1) if isodd(raw >> i)]
-            @test Integer(s) === raw
+            @test to_bits(s) === raw
             @test reinterpret(S, s) === raw
-            @test uset_from_bits(Integer(s)) === s
+            @test from_bits(USet, to_bits(s)) === s
             @test copy(s) === s
             @test convert(USet{S}, s) === s
             for D in (UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, UInt512)
@@ -449,9 +449,9 @@ end
             end
         end
     end
-    @test Integer(USet{UInt8}([0, 3, 5])) === 0x29
-    @test uset_from_bits(0x05) === USet{UInt8}([0, 2])
-    @test_throws MethodError uset_from_bits(5)
+    @test to_bits(USet{UInt8}([0, 3, 5])) === 0x29
+    @test from_bits(USet, 0x05) === USet{UInt8}([0, 2])
+    @test_throws MethodError from_bits(USet, 5)
 end
 
 @testset "Large backing integers" failfast = true begin

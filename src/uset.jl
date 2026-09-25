@@ -22,8 +22,8 @@ The memory of this type is guaranteed to be identical to a `U`,
 where set bits from LSB to MSB represent the presence of the integers
 zero and upwards. I.e. `USet{UInt8}([0, 3, 5])` is guaranteed to have the same
 memory layout as `0x29`.
-Obtain the equivalent integer with `Integer(s)`. This is guaranteed to be
-a noop. Construct from the equivalent integer with [`uset_from_bits`](@ref)
+Obtain the equivalent integer with [`to_bits`](@ref). This is guaranteed to be
+a noop. Construct from the equivalent integer with [`from_bits`](@ref).
 
 # Examples
 ```jldoctest
@@ -152,34 +152,34 @@ Base.isempty(x::USet) = iszero(x.x)
 Base.copy(x::USet) = x
 
 """
-    Integer(x::USet{U})::U
+    to_bits(x::USet{U})::U
 
 Get the integer backing `x`. This integer is guaranteed to be a bit mask
 where the N-th zero-indexed bit from lowest to highest bit represents the
 presence of the element N in `x`.
 
-See also: [`uset_from_bits`](@ref)
+See also: [`from_bits`](@ref)
 
 # Examples
 ```jldoctest
 julia> s = USet{UInt16}([4, 11, 8, 2, 6]);
 
-julia> u = Integer(s);
+julia> u = to_bits(s);
 
 julia> u === 0x0954
 true
 
-julia> uset_from_bits(u) === s
+julia> from_bits(USet, u) === s
 true
 ```
 """
-Base.Integer(x::USet) = x.x
+to_bits(x::USet) = x.x
 
 """
-    uset_from_bits(u::U)::USet{U} where {U <: Unsigned}
+    from_bits(::Type{USet}, u::U)::USet{U} where {U <: Unsigned}
 
 Construct a `USet{U}` using the backing integer `u`.
-For bitstype `U`, it is guaranteed that `Integer(uset_from_bits(u)) === u`.
+For bitstype `U`, it is guaranteed that `to_bits(from_bits(USet, u)) === u`.
 
 The resulting `USet` contains the elements represented by the set
 bits in `u`, from `UInt32(0)` being the LSB, and `UInt32(bitsizeof(U) - 1)`
@@ -188,7 +188,7 @@ is the MSB.
 This operation is guaranteed to be optimizable to a noop.
 
 ```jldoctest
-julia> u = 0x50ae; s = uset_from_bits(u);
+julia> u = 0x50ae; s = from_bits(USet, u);
 
 julia> s isa USet{UInt16}
 true
@@ -196,11 +196,11 @@ true
 julia> s == Set([i for i in 0:16 if isodd(u >> i)])
 true
 
-julia> Integer(s) === u
+julia> to_bits(s) === u
 true
 ```
 """
-uset_from_bits(u::Unsigned) = new_uset(u)
+from_bits(::Type{USet}, u::Unsigned) = new_uset(u)
 
 function Base.iterate(x::USet{U}, state::U = x.x) where {U}
     iszero(state) && return nothing

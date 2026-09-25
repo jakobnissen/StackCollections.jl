@@ -7,6 +7,7 @@ can be queried by `capacity(T)`.
 
 Construct from an iterable of elements `convert`able to `Bool`.
 
+# Extended help
 Operations that exceed the maximum capacity, or require a nonempty vector
 when given an empty one, throw an `ArgumentError`. Invalid indices throw a
 `BoundsError`. These checks may sometimes be disabled locally with `@inbounds`
@@ -15,11 +16,9 @@ Mutable operations are not supported; use `push`, `pushfirst`, `pop`, `popfirst`
 `deleteat`, and `setindex`
 instead of the corresponding mutable Base operations.
 
-Indexing with an integer vector or range, a Boolean mask, or `:` returns a
-`UVec{U}`. Boolean masks must have the same length as the vector. Integer
-indices may repeat, but the result must fit within `capacity(UVec{U})`.
-Like `Base`, scalar `Bool` indices are not supported, and throw an `ArgumentError`,
-even with `@inbounds`.
+The underlying integer of an `x::UVec` can be obtained with [`to_bits`](@ref),
+and a `UVec` can be constructed from its underlying integer with
+[`from_bits`](@ref).
 
 Most operations on `UVec` that returns boolean vectors, such as `filter`,
 `reverse` and indexing are specialized to return `UVec`. However, it is not
@@ -38,6 +37,49 @@ struct UVec{U <: Unsigned} <: AbstractVector{Bool}
         return new{U}(u)
     end
 end
+
+"""
+    to_bits(v::UVec{U})::U
+
+Obtain the backing integer of `v`.
+The value of `v` is an implementation detail, but the following properties
+are guaranteed:
+* This operations can optimize to a noop
+* The result is a value of type `U`
+* No distinct `UVec`s map to the same integer, however the inverse
+  is not guaranteed.
+* For any `v::UVec`, `from_bits(UVec, to_bits(v)) === v`.
+
+See also: [`from_bits`](@ref)
+"""
+to_bits(v::UVec) = v.x
+
+"""
+    from_bits(::Type{UVec}, u::U)::UVec{U} where {U <: Unsigned}
+
+Construct an `UVec{U}` from its underlying integer.
+Not all integers are valid backing storage for a `UVec`, so the
+result may be a corrupted and malfunctioning `UVec`.
+The only way to get a guaranteed valid input to this function is
+`to_bits(::UVec)`.
+
+This function is guaranteed to be:
+* Optimizable to a noop
+* Round-trippable with `to_bits`, in the sense that for any `v::UVec`,
+  `from_bits(UVec, to_bits(v)) === v`.
+
+# Examples
+```
+julia> v = UVec{UInt32}([0, 1, 1, 1, 0, 1, 0, 1, 0, 1]);
+
+julia> u = to_bits(v); typeof(u)
+UInt32
+
+julia> from_bits(UVec, u) === v
+true
+```
+"""
+from_bits(::Type{UVec}, u::Unsigned) = new_uvec(u)
 
 UVec{U}() where {U <: Unsigned} = new_uvec(zero(U))
 

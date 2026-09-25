@@ -1,7 +1,7 @@
 using Test
 using BitIntegers: UInt256, UInt512
 using StackCollections: USet, UVec, pop, push, popfirst, pushfirst, append, deleteat, insert, capacity,
-    maximum_member, can_contain, uset_from_bits, setindex, spliceinto
+    maximum_member, can_contain, to_bits, from_bits, setindex, spliceinto
 
 # A single top-level testset, so that failures in one testset do not prevent
 # the others from running.

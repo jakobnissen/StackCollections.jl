@@ -107,7 +107,8 @@ export USet,
     insert,
     spliceinto,
     capacity,
-    uset_from_bits,
+    to_bits,
+    from_bits,
     can_contain
 
 end # module
