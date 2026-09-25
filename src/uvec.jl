@@ -5,6 +5,8 @@ Immutable boolean vector backed by a single `U`.
 A `T <: UVec` has a maximum length determined by `U`, which
 can be queried by `capacity(T)`.
 
+Construct from an iterable of elements `convert`able to `Bool`.
+
 Operations that exceed the maximum capacity, or require a nonempty vector
 when given an empty one, throw an `ArgumentError`. Invalid indices throw a
 `BoundsError`. These checks may sometimes be disabled locally with `@inbounds`
