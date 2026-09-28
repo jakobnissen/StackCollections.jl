@@ -10,20 +10,20 @@ Construct from an iterable of elements `convert`able to `Bool`.
 # Extended help
 Operations that exceed the maximum capacity, or require a nonempty vector
 when given an empty one, throw an `ArgumentError`. Invalid indices throw a
-`BoundsError`. These checks may sometimes be disabled locally with `@inbounds`
+`BoundsError`. These checks may sometimes be disabled locally with `@inbounds`.
 
-Mutable operations are not supported; use `push`, `pushfirst`, `pop`, `popfirst`,
+Mutating operations are not supported; use `push`, `pushfirst`, `pop`, `popfirst`,
 `deleteat`, and `setindex`
-instead of the corresponding mutable Base operations.
+instead of the corresponding mutating Base operations.
 
 The underlying integer of an `x::UVec` can be obtained with [`to_bits`](@ref),
 and a `UVec` can be constructed from its underlying integer with
 [`from_bits`](@ref).
 
-Most operations on `UVec` that returns boolean vectors, such as `filter`,
-`reverse` and indexing are specialized to return `UVec`. However, it is not
+Most operations on `UVec` that return boolean vectors, such as `filter`,
+`reverse` and indexing, are specialized to return `UVec`. However, it is not
 guaranteed that all methods are implemented and do not fall back to a default
-implementation. However, specialized methods implemented that explicitly return `UVec`
+implementation. However, implemented specialized methods that explicitly return `UVec`
 are guaranteed to not be removed in future minor releases.
 `Base.similar(::UVec, args...)` returns `BitArray`.
 """
@@ -42,11 +42,11 @@ end
     to_bits(v::UVec{U})::U
 
 Obtain the backing integer of `v`.
-The value of `v` is an implementation detail, but the following properties
+The value of `to_bits(v)` is an implementation detail, but the following properties
 are guaranteed:
-* This operations can optimize to a noop
+* This operation can optimize to a noop
 * The result is a value of type `U`
-* No distinct `UVec`s map to the same integer, however the inverse
+* No distinct `UVec`s map to the same integer; however, the inverse
   is not guaranteed.
 * For any `v::UVec`, `from_bits(UVec, to_bits(v)) === v`.
 
@@ -57,7 +57,7 @@ to_bits(v::UVec) = v.x
 """
     from_bits(::Type{UVec}, u::U)::UVec{U} where {U <: Unsigned}
 
-Construct an `UVec{U}` from its underlying integer.
+Construct a `UVec{U}` from its underlying integer.
 Not all integers are valid backing storage for a `UVec`, so the
 result may be a corrupted and malfunctioning `UVec`.
 The only way to get a guaranteed valid input to this function is
@@ -69,7 +69,7 @@ This function is guaranteed to be:
   `from_bits(UVec, to_bits(v)) === v`.
 
 # Examples
-```
+```jldoctest
 julia> v = UVec{UInt32}([0, 1, 1, 1, 0, 1, 0, 1, 0, 1]);
 
 julia> u = to_bits(v); typeof(u)
@@ -159,7 +159,7 @@ end
     capacity(::Type{<:UVec{U}})::Int
 
 Compute the maximum number of elements a `UVec{U}` can contain.
-This computation is compile time constant.
+This computation is a compile-time constant.
 
 # Examples
 ```jldoctest
@@ -268,7 +268,7 @@ based on `v`, but with the converted elements, in order, appended to the end.
 Throw an `ArgumentError` if `v` is already at maximum capacity.
 The check can be disabled locally with `@inbounds`, similar to `BoundsError`s.
 
-# See also: [`pop`](@ref), [`pushfirst`](@ref)
+See also: [`pop`](@ref), [`pushfirst`](@ref)
 
 # Examples
 ```jldoctest
@@ -306,10 +306,10 @@ end
     pushfirst(v::UVec{U}, i1, is...)::UVec{U}
 
 Convert every element of `(i1, is...)` to `Bool`, then return a new `UVec{U}`
-with the content of `v`, but with the converted elements in order, at the beginning,
+with the content of `v`, but with the converted elements, in order, at the beginning,
 and all preexisting elements shifted back.
-Throw an `ArgumentError` if `v` is too big to accomodate the extra elements
-(see [`capacity`](@ref))
+Throw an `ArgumentError` if `v` is too big to accommodate the extra elements
+(see [`capacity`](@ref)).
 The check can be disabled locally with `@inbounds`, similar to `BoundsError`s.
 
 See also: [`push`](@ref)
@@ -418,8 +418,8 @@ end
 
 Convert `item` to `Bool`, then return a new `UVec{U}` based on `v`, but with the converted
 `item` inserted at index `idx`.
-The elements at, or after `idx` is shifted one index up.
-The index `idx` must be in `1:length(v)+1`. Throws a `BoundsError` if `idx` is out of bounds.
+The elements at or after `idx` are shifted one index up.
+The index `idx` must be in `1:length(v)+1`. Throw a `BoundsError` if `idx` is out of bounds.
 Throw an `ArgumentError` if `v` is at capacity. Both are disabled with `@inbounds`.
 Throw an `ArgumentError` if `idx` is a `Bool`, even with `@inbounds`.
 
@@ -467,7 +467,7 @@ end
     deleteat(v::UVec{U}, mask::AbstractVector{Bool})::UVec{U}
 
 Return a new `UVec` based on `v`, but with the index or indices `idx` removed,
-and all subsequent element shifted downwards to fill the deleted elements.
+and all subsequent elements shifted downwards to fill the deleted elements.
 
 If a Boolean vector `mask` is passed, including a `UnitRange{Bool}`, it is
 used as a mask, and the elements at positions where `mask` is `true` are removed.
@@ -639,7 +639,7 @@ Else, if the number of selected indices does not match the length of `items`,
 a `DimensionMismatch` error is thrown.
 These errors may be elided with `@inbounds`.
 
-See also: [`push!`](@ref), [`spliceinto`](@ref)
+See also: [`push`](@ref), [`spliceinto`](@ref)
 
 # Examples
 ```jldoctest
@@ -837,8 +837,8 @@ end
 """
     spliceinto(v::UVec{U}, i::Integer, e::AbstractVector)::UVec{U}
 
-Return a copy of `v` with the elements of `e` (converted to `Bool`) inserted positions
-`i:i+length(e)-1`, and the previously existing elements at `i:length(v)` 
+Return a copy of `v` with the elements of `e` (converted to `Bool`) inserted at positions
+`i:i+length(e)-1`, and the previously existing elements at `i:length(v)`
 shifted to higher indices.
 
 Throw a `BoundsError` if `i` is not in `1:length(v)+1`.
@@ -908,11 +908,11 @@ end
 """
     spliceinto(v::UVec{U}, i::UnitRange, e::AbstractVector)::UVec{U}
 
-Return a copy of `v` with the indices at `i` deleted, and the  elements of `e`
+Return a copy of `v` with the indices at `i` deleted, and the elements of `e`
 (converted to `Bool`) inserted at the deletion site.
 Elements in `v` after `i` are shifted to immediately after the inserted `e`.
 
-Throw a `BoundsError` if `i` is not in `1:length(v)+1`. Throw an `ArgumentError`
+Throw a `BoundsError` if `i` is not in `1:length(v)`. Throw an `ArgumentError`
 if the resulting `UVec{U}`'s length would exceed `capacity(UVec{U})`.
 Both exceptions can be suppressed with `@inbounds`.
 

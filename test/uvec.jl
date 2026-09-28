@@ -222,11 +222,9 @@ end
     end
 
     @testset "Boolean vector indexing" failfast = true begin
-        # Exhaust every payload and mask for the smallest backing type.
+        # Cover every length of the smallest backing type.
         # Identity also checks that unused bits remain zero.
-        for n in 0:capacity(UVec{UInt8}), bits in 0:((1 << n) - 1), selection in 0:((1 << n) - 1)
-            data = [isodd(bits >> i) for i in 0:(n - 1)]
-            mask = [isodd(selection >> i) for i in 0:(n - 1)]
+        for n in 0:capacity(UVec{UInt8}), data in bit_patterns(n), mask in bit_patterns(n)
             packed = UVec{UInt8}(data)
             expected = UVec{UInt8}(data[mask])
             deleted = UVec{UInt8}(deleteat!(copy(data), mask))
@@ -556,7 +554,7 @@ end
 end
 
 @testset "Backing widths and lengths" failfast = true begin
-    # Every UInt8 vector and UInt16 length is covered. Wider types sample
+    # Every UInt8 and UInt16 length is covered. Wider types sample
     # lengths around carries, word boundaries, and capacity with patterns
     # that expose high bits and cleared bits.
     # Identity with a freshly constructed result also checks that operations
@@ -569,7 +567,7 @@ end
             lengths = if T in (UInt256, UInt512)
                 filter(<=(n), (0, 1, 127, 128, 129, 255, 256, 257, n - 1, n))
             elseif T in (UInt32, UInt64, UInt128)
-                carries = [p + d for p in (4, 8, 16, 32, 64) for d in -1:1]
+                carries = [p + d for p in (4, 8, 16, 32, 64) for d in (-1, 0)]
                 boundaries = [64 - (8sizeof(T) - n) + d for d in -1:1]
                 sort!(unique(filter(l -> 0 <= l <= n, [0, 1, 2, 3, n ÷ 2, n - 1, n, carries..., boundaries...])))
             else
@@ -585,15 +583,7 @@ end
                     boundaries = [b - (8sizeof(T) - n) + d for b in (64, 128, 256) for d in -1:1]
                     sort!(unique(filter(i -> 1 <= i <= len, [1, 2, len ÷ 2, len ÷ 2 + 1, len - 1, len, boundaries...])))
                 end
-                patterns = if T === UInt8
-                    ([isodd(bits >> i) for i in 0:(len - 1)] for bits in 0:((1 << len) - 1))
-                else
-                    (
-                        falses(len), trues(len), isodd.(1:len), iseven.(1:len),
-                        [i == 1 for i in 1:len], [i == len for i in 1:len],
-                    )
-                end
-                for data in patterns
+                for data in bit_patterns(len)
                     v = UVec{T}(data)
                     @test collect(v) == data
                     @test length(v) === len

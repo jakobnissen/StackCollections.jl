@@ -15,12 +15,12 @@ can sometimes be disabled locally with `@inbounds`.
 elements, and ignore those that are not `isequal` to a representable member,
 such as `0.5`, `-0.0` or `1.0 - 0.0im`. Other element types throw a `MethodError`.
 
-Mutable operations are not supported; use `push`, `pop` and `popfirst`
-instead of the corresponding mutable Base operations.
+Mutating operations are not supported; use `push`, `pop` and `popfirst`
+instead of the corresponding mutating Base operations.
 
 The memory of this type is guaranteed to be identical to a `U`,
 where set bits from LSB to MSB represent the presence of the integers
-zero and upwards. I.e. `USet{UInt8}([0, 3, 5])` is guaranteed to have the same
+zero and upwards. E.g. `USet{UInt8}([0, 3, 5])` is guaranteed to have the same
 memory layout as `0x29`.
 Obtain the equivalent integer with [`to_bits`](@ref). This is guaranteed to be
 a noop. Construct from the equivalent integer with [`from_bits`](@ref).
@@ -182,8 +182,8 @@ Construct a `USet{U}` using the backing integer `u`.
 For bitstype `U`, it is guaranteed that `to_bits(from_bits(USet, u)) === u`.
 
 The resulting `USet` contains the elements represented by the set
-bits in `u`, from `UInt32(0)` being the LSB, and `UInt32(bitsizeof(U) - 1)`
-is the MSB.
+bits in `u`, with `UInt32(0)` being the LSB, and `UInt32(bitsizeof(U) - 1)`
+being the MSB.
 
 This operation is guaranteed to be optimizable to a noop.
 
@@ -216,7 +216,7 @@ end
 # Fallback for other types, which could in principle be isequal to an integer.
 # Set operations reject these, but `in` must not throw, since e.g. `==` between
 # sets relies on it.
-Base.in(i, x::USet) = any(j -> isequal(i, j), x)
+Base.in(i, x::USet) = any(j -> isequal(i, j::UInt32), x)
 
 Base.checkbounds(::Type{Bool}, x::USet, i::Integer) = can_contain(x, i)
 

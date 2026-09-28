@@ -48,9 +48,9 @@ end
     pop(collection::Union{USet, UVec}) -> (new_collection, item)
 
 Create a new collection of the same type as the input, but with the last element
-removed. The new collection and the removed element is returned as a tuple.
+removed. The new collection and the removed element are returned as a tuple.
 
-If collection is empty, throw an `ArgumentError`. The check can be disabled locally
+If the collection is empty, throw an `ArgumentError`. The check can be disabled locally
 with `@inbounds`, similar to `BoundsError`s.
 
 See also: [`popfirst`](@ref), [`push`](@ref), [`deleteat`](@ref)
@@ -72,9 +72,9 @@ function pop end
     popfirst(collection::Union{USet, UVec}) -> (new_collection, item)
 
 Create a new collection of the same type as the input, but with the first element
-removed. The new collection and the removed element is returned as a tuple.
+removed. The new collection and the removed element are returned as a tuple.
 
-If collection is empty, throw an `ArgumentError`. The check can be disabled locally
+If the collection is empty, throw an `ArgumentError`. The check can be disabled locally
 with `@inbounds`, similar to `BoundsError`s.
 
 See also: [`pop`](@ref), [`push`](@ref), [`deleteat`](@ref)

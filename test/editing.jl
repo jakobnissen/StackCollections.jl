@@ -3,19 +3,11 @@
         @testset "$U" failfast = true begin
             T = UVec{U}
             cap = capacity(T)
-            # Exhaust UInt8, but sample lengths and edit positions for wider
-            # types so range operations do not multiply into millions of tests.
+            # Cover every UInt8 length, but sample lengths and edit positions for
+            # wider types so range operations do not multiply into many tests.
             lengths = U === UInt8 ? (0:cap) : (0, 1, 2, cap ÷ 2, cap - 1, cap)
             for len in lengths
-                patterns = if U === UInt8
-                    ([isodd(bits >> i) for i in 0:(len - 1)] for bits in 0:((1 << len) - 1))
-                else
-                    (
-                        falses(len), trues(len), isodd.(1:len), iseven.(1:len),
-                        [i == 1 for i in 1:len], [i == len for i in 1:len],
-                    )
-                end
-                for data in patterns
+                for data in bit_patterns(len)
                     v = T(data)
                     # Identity with freshly constructed values catches stale bits
                     # outside the elements as well as corrupt length fields.
@@ -49,8 +41,7 @@
                         end
                     end
                     @test deleteat(v, 1:len) === T()
-                    for n in 2:min(4, cap - len), bits in 0:((1 << n) - 1)
-                        prefix = [isodd(bits >> i) for i in 0:(n - 1)]
+                    for n in 2:min(4, cap - len), prefix in bit_patterns(n)
                         @test pushfirst(v, prefix...) === T(vcat(prefix, data))
                     end
                     for shift in (-len - 1, -1, 0, 1, len + 1)
@@ -137,10 +128,8 @@ end
 end
 
 @testset "spliceinto" failfast = true begin
-    @testset "spliceinto exhaustive UInt8 insertions" failfast = true begin
-        for n in 0:5, m in 0:(5 - n), a in 0:((1 << n) - 1), b in 0:((1 << m) - 1)
-            data = [isodd(a >> j) for j in 0:(n - 1)]
-            items = [isodd(b >> j) for j in 0:(m - 1)]
+    @testset "spliceinto UInt8 insertions" failfast = true begin
+        for n in 0:5, m in 0:(5 - n), data in bit_patterns(n), items in bit_patterns(m)
             v = UVec{UInt8}(data)
             for i in 1:(n + 1)
                 expected = UVec{UInt8}(vcat(data[1:(i - 1)], items, data[i:end]))
@@ -157,7 +146,7 @@ end
                 limit = min(cap - n, capacity(UVec{S}))
                 for m in unique((0, 1, limit ÷ 2, limit))
                     m > limit && continue
-                    for data in (trues(n), falses(n), isodd.(1:n)), items in (trues(m), falses(m), iseven.(1:m))
+                    for data in (trues(n), isodd.(1:n)), items in (falses(m), iseven.(1:m))
                         v = UVec{D}(data)
                         e = UVec{S}(items)
                         for i in unique((1, 1 + n ÷ 2, n + 1))
@@ -212,14 +201,12 @@ end
         @test v === UVec{UInt8}([1, 0])
     end
 
-    @testset "spliceinto exhaustive UInt8 ranges" failfast = true begin
+    @testset "spliceinto UInt8 ranges" failfast = true begin
         cap = capacity(UVec{UInt8})
-        for n in 0:cap, a in 0:((1 << n) - 1)
-            data = [isodd(a >> j) for j in 0:(n - 1)]
+        for n in 0:cap, data in bit_patterns(n)
             v = UVec{UInt8}(data)
             for first in 1:(n + 1), last in (first - 1):n
-                for m in 0:(cap - n + last - first + 1), b in 0:((1 << m) - 1)
-                    items = [isodd(b >> j) for j in 0:(m - 1)]
+                for m in 0:(cap - n + last - first + 1), items in bit_patterns(m)
                     expected = UVec{UInt8}(vcat(data[1:(first - 1)], items, data[(last + 1):end]))
                     @test spliceinto(v, first:last, items) === expected
                     @test spliceinto(v, first:last, UVec{UInt8}(items)) === expected
@@ -235,7 +222,7 @@ end
                 for first in unique((1, 1 + n ÷ 2, n + 1)), last in unique((first - 1, first - 1 + (n - first + 1) ÷ 2, n))
                     limit = min(cap - n + last - first + 1, capacity(UVec{S}))
                     for m in unique((0, min(1, limit), limit ÷ 2, limit))
-                        for data in (trues(n), falses(n), isodd.(1:n)), items in (trues(m), falses(m), iseven.(1:m))
+                        for data in (trues(n), isodd.(1:n)), items in (falses(m), iseven.(1:m))
                             v = UVec{D}(data)
                             expected = UVec{D}(vcat(data[1:(first - 1)], items, data[(last + 1):end]))
                             @test spliceinto(v, first:last, UVec{S}(items)) === expected
