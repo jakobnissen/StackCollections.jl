@@ -1,7 +1,6 @@
 # StackCollections.jl
 
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://jakobnissen.github.io/StackCollections.jl/dev)
-![CI](https://github.com/jakobnissen/StackCollections.jl/workflows/CI/badge.svg)
 [![Codecov](https://codecov.io/gh/jakobnissen/StackCollections.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/jakobnissen/StackCollections.jl)
 
 _Integer backed collections in Julia_
