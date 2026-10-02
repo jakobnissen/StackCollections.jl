@@ -1,13 +1,12 @@
 name = "StackCollections"
 uuid = "501fa84d-4592-420e-a352-d1184606d913"
-authors = ["Jakob Nybo Nissen <jakobnybonissen@gmail.com>"]
-version = "0.1.0"
+version = "0.2.0"
+authors = ["Jakob Nybo Andersen <jnandersen@proton.me>"]
+
+[workspace]
+projects = ["test", "docs"]
+
+[deps]
 
 [compat]
-julia = "1"
-
-[extras]
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-
-[targets]
-test = ["Test"]
+julia = "1.10"

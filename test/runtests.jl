@@ -1,25 +1,62 @@
-using StackCollections
 using Test
+using BitIntegers: UInt256, UInt512
+using StackCollections: StackCollections,
+    USet,
+    UVec,
+    pop,
+    push,
+    popfirst,
+    pushfirst,
+    append,
+    deleteat,
+    insert,
+    capacity,
+    maximum_member,
+    can_contain,
+    to_bits,
+    from_bits,
+    setindex,
+    spliceinto
+using Aqua: Aqua
 
-@testset "DigitSet" begin
-include("digitset.jl")
+@testset "Aqua" begin
+    Aqua.test_all(
+        StackCollections
+        # ambiguities = false,
+        # unbound_args = false,
+        # undefined_exports = false,
+        # project_extras = false,
+        # stale_deps = false,
+        # deps_compat = false,
+        # piracies = false,
+        # persistent_tasks = false,
+        # undocumented_names = true,
+    )
 end
 
-@testset "StackSet" begin
-include("stackset.jl")
+# Bit patterns of length `len` to test against. Every pattern is covered for
+# short lengths; longer lengths use patterns that expose both ends, the high
+# bit, alternation and uniform payloads.
+function bit_patterns(len::Integer)
+    return if len <= 3
+        [[isodd(bits >> i) for i in 0:(len - 1)] for bits in 0:((1 << len) - 1)]
+    else
+        [
+            falses(len), trues(len), isodd.(1:len), iseven.(1:len),
+            [i == 1 for i in 1:len], [i == len for i in 1:len],
+        ]
+    end
 end
 
-@testset "StackVector" begin
-include("stackvector.jl")
-end
+# A single top-level testset, so that failures in one testset do not prevent
+# the others from running.
+@testset "StackCollections" begin
+    @testset "USet" begin
+        include("uset.jl")
+    end
 
-@testset "OneHotVector" begin
-include("onehotvector.jl")
-end
-
-@testset "Cross-type" begin
-    @test hash(DigitSet([1, 6, 2])) != hash(StackSet([1, 6, 2]))
-    @test hash(DigitSet([1, 6, 2])) == hash(DigitSet([1, 6, 2]))
-
-    @test hash(StackVector([false, false, true])) != hash(OneHotVector([false, false, true]))
+    @testset "UVec" begin
+        include("uvec.jl")
+        include("editing.jl")
+    end
 end

@@ -1,63 +1,160 @@
+```@meta
+CurrentModule = StackCollections
+DocTestSetup = quote
+    using StackCollections
+end
+```
+
 # StackCollections.jl
 
-_Fixed-bit collections in Julia_
+This package implements immutable and isbits collections.
+The types in this package are:
 
-This package implements a few collection types that can be stored in one or a few machine integers:
+* Small and non-allocating: Isbits, so stored in registers or on the stack, rarely heap-allocated.
+* Microoptimized: Methods have been crafted for high performance, avoiding branches and allocations where possible.
 
-* `DigitSet`: A set of integers 0:63
-* `StackSet`: A set of integers N:N+63
-* `StackVector`: A boolean vector with a length up to 64.
-* `OneHotVector`: A boolean vector with exactly one value `true`, rest `false`.
+Currently, the following types are implemented:
 
-The main features of the types are:
+* `USet{U <: Unsigned} <: AbstractSet{UInt32}`: Integers as bit sets, which can contain integers in `UInt32(0):UInt32(B - 1)`, where `B` is the number of bits in `U`.
+* `UVec{U <: Unsigned} <: AbstractVector{Bool}`: Integers as bit vectors.
 
-* They are simple to use, implements the basic methods from `Base` you would expect such as `union` for sets and `reverse` for vectors:
+You may want to use StackCollections.jl to:
+* Save memory, as the types are smaller than `BitSet` and `BitVector`.
+* Improve performance, as operations on the StackCollection types are often more efficient.
+## Installation and quickstart
+StackCollections is registered in Julia's General Registry. Hence, users can add it by running `using Pkg; Pkg.add("StackCollections")`.
 
-```
-julia> a = StackVector([true, true, false, true]); reverse(a)
-4-element StackVector:
- 1
- 0
- 1
- 1
-```
+### Usage
+```jldoctest
+s = USet{UInt32}([5, 2, 1])
+s2 = push(s, 19)
+common = intersect(s, s2)
+(s, largest) = pop(s2)
 
-* They are safe by default, and throws informative error messages if you attempt illegal or undefined operations.
+v = UVec{UInt8}([true, false, true, true])
+v = setindex(v, false, 2)
+v = push(v, false)
+@assert v == [1, 0, 1, 1, 0]
 
-```
-julia> push(DigitSet(), 100)
-ERROR: ArgumentError: DigitSet can only contain 0:63
-```
-
-* All types are immutable and so easier to reason about. Base methods that usually end with an exclamation mark such as `push!` instead must use `push`.
-
-```
-julia> push!(DigitSet(), 100)
-ERROR: MethodError: no method matching push!(::DigitSet, ::Int64)
+# output
 ```
 
-* They are _highly_ efficiently implemented, with most methods meticulously crafted for maximal performance.
+## Immutable operations
+The types in this package are immutable collections.
+Therefore, they do not support mutating operations you know from similar collections, such as `pop!`, `deleteat!` or `push!`.
+Some of these operations are provided with similar non-mutating operations that return a new set, such as `push(s, i)`, which computes a new collection equal to `s` but with `i` added. Other operations have no direct equivalent, and are provided through new functions.
 
+Since the types are small bitstypes, creating new copies of the collections is more performant than mutation would be, and so there is no performance downside to using the non-mutating operations. If mutation is desired, you may store an instance of some collection `T` in a `Ref{T}`, and then swap it out.
+
+The following table can be used to find similar methods to known mutating operations. Note that besides returning new instances rather than mutating, the semantics might differ slightly. See each function's docstring for more details.
+
+| Base function | Use instead  |
+|---------------|--------------|
+| `setindex!`   | `setindex`   |
+| `push!`       | `push`       |
+| `pushfirst!`  | `pushfirst`  |
+| `pop!`        | `pop`        |
+| `popfirst!`   | `popfirst`   |
+| `deleteat!`   | `deleteat`   |
+| `append!`     | `append`     |
+| `insert!`     | `insert`     |
+| `splice!`     | `spliceinto` |
+
+
+## The `USet` type
+A `USet{U <: Unsigned} <: AbstractSet{UInt32}` is an immutable integer set backed by a `U`.
+It is analogous to a bitstype version of `BitSet` from Base.
+
+For an integer `U` with `B` bits, a `USet{U}` can contain the values `UInt32(0):UInt32(B - 1)`. Attempting to add `UInt32` values above that range to the set will throw an `ArgumentError`.
+For some operations, the error can be suppressed with `@inbounds`, in which case the functions return an arbitrary value (though guaranteed to be of the same type, and not incurring undefined behaviour).
+
+A `USet` is ordered: Iteration is guaranteed to be in order from lowest to highest element, and `pop` and `popfirst` are guaranteed to remove the largest (last) and smallest (first) element, respectively.
+
+Set operations and membership are determined by `isequal` rather than `==`.
+
+#### Non-`UInt32` elements
+`USet <: AbstractSet{UInt32}`. Operations on `USet` are intended to support `Integer`s, including negative integers and integers `> typemax(UInt32)`.
+For example, given a `s::USet`, `-1 in s` is a valid query guaranteed to return `false`.
+See [`can_contain`](@ref).
+
+Some effort has been made to opportunistically support non-`Integer` types for `USet` queries; however, these queries are not optimally efficient, and the sheer number of possible types and semantics mean there may be some unintentional behaviour in edge cases.
+
+Explicit support has been added for `Complex`, `Real` and `Missing` types, including edge cases like `-0.0 in USet{UInt8}([0.0])`, which correctly returns `false`, since `!isequal(UInt32(0), -0.0)`.
+
+#### `USet` integer representation
+A `USet{U}` is guaranteed to be an immutable struct with the same memory layout as a `U`, where the bits from LSB to MSB represent the presence of the elements `UInt32(0)` upwards.
+For example, `USet{UInt16}([2, 9, 1, 7, 3])` is guaranteed to be stored in memory as `0x028e`.
+
+You can obtain the wrapping integer with `to_bits(::USet)`, and construct a `USet` directly from a backing `Unsigned` integer with `from_bits(USet, ::Unsigned)`.
+These operations optimize to noops.
+
+#### `USet` example usage
+
+```jldoctest
+s = USet{UInt16}([4, 9, 11, 0])
+@assert !in(55, s)
+
+new_s, element = pop(s)
+@assert element == 11 # largest element popped
+@assert new_s === USet{UInt16}([9, 0, 4])
+@assert length(s) == 4 # old s unchanged
+
+s2 = intersect(s, [4, 9, 91])
+@assert s2 === USet{UInt16}([9, 4])
+
+# output
 ```
-julia> f(x, y) = length(setdiff(x, symdiff(x, y)));
 
-julia> code_native(f, (DigitSet, DigitSet), debuginfo=:none)
-    .section    __TEXT,__text,regular,pure_instructions
-    movq    (%rsi), %rax
-    andq    (%rdi), %rax
-    popcntq %rax, %rax
-    retq
-    nopl    (%rax)
+## The `UVec` type
+
+A `UVec{U <: Unsigned} <: AbstractVector{Bool}` is an immutable boolean vector backed by a `U`. It is analogous to a `BitVector` from Base.
+
+A `UVec{U}` has a maximum length which is determined by the type of `U`. The maximum length of a `T <: UVec` can be queried at compile time by `capacity(T)`.
+See the section below on how to choose the right type for `U`.
+
+Attempting to create a `UVec` longer than the maximum capacity will throw an `ArgumentError`.
+For some operations, the error can be suppressed with `@inbounds`, in which case the functions return an arbitrary value (though guaranteed to be of the same type, and not incurring undefined behaviour).
+
+#### `UVec` integer representation
+`UVec{U}` is guaranteed to have the same memory layout as a single `U`. This integer packs both length and the vector itself. The specific packing/encoding scheme is an implementation detail, but it is guaranteed that:
+* No distinct `UVec`s have the same backing integer.
+* No distinct integers produce the same `UVec`: Either an integer is not a valid backing storage for `UVec`, or else it produces a unique `UVec`.
+
+You can obtain the backing integer of a `v::UVec` with `to_bits(v)`, and construct a `UVec{U}` from a `u::U` with `from_bits(UVec, u)`.
+
+#### `UVec` example usage
+
+```jldoctest
+v = UVec{UInt32}([1, 0, 1, 1, 0])
+v2 = push(v, 1, 1, 0, 1)
+
+@assert v2 == [1, 0, 1, 1, 0, 1, 1, 0, 1]
+@assert length(v) == 5 # old one unchanged
+
+v3 = reverse(v)
+@assert v3 === UVec{UInt32}([0, 1, 1, 0, 1])
+
+# output
 ```
 
-Stack collections can be instantiated from an iterable, for example `StackVector([true, false, true])`, but this is not optimally efficient. Alternatively, they can be directly constructed using the unexported `StackCollections.unsafe` trait. But be careful: The trait is called `unsafe` for a reason - when constructed this way, there is no checking the inputs.
+## Choosing U for `USet{U}` and `UVec{U}`
+The integer type `U` in `USet{U}` or `UVec{U}` may be any unsigned bitstype. The type restricts the maximum elements a `USet` can contain, and the maximum length of a `UVec`. Therefore, larger `U` types allow more flexibility with the `USet` and `UVec` type.
+A `USet{U}` can maximally contain `B - 1`, where `B` is the number of bits in `U`. The maximum length of a `T <: UVec` is given by `capacity(T)`. 
 
-```
-julia> StackVector(UInt(5), StackCollections.unsafe)
-3-element StackVector:
- 1
- 0
- 1
-```
+| U type  | USet max member | `capacity(UVec{U})` |
+|---------|-----------------|---------------------|
+| UInt8   |               7 |                   5 |
+| UInt16  |              15 |                  12 |
+| UInt32  |              31 |                  27 |
+| UInt64  |              63 |                  58 |
+| UInt128 |             127 |                 121 |
 
-This API follows SemVer 2.0.0. The API for this package is defined by the documentation.
+### Large `U` types
+For `U` larger than the system word size (typically `UInt64`), operations tend to be significantly slower, since CPUs don't tend to natively support larger integer sizes than the word size, and operations have to be expressed as multiple operations on word sized chunks.
+
+For larger bit integers than `UInt128`, you can load the package `BitIntegers.jl`.
+However, note that this package may not support some operations (notably, currently `bitreverse` is not supported), so some StackCollections.jl functions may not work with these larger integers.
+
+### Non-power-of-two sized integers
+This package was written before support for non-power-of-two integers (NPTI) was available in Julia. Hence, the behaviour for StackCollection types backed by NPTI is not tested, and may not be correct.
+Support for backing by NPTI is planned eventually.
